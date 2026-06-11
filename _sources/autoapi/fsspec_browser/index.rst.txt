@@ -1,0 +1,21 @@
+fsspec_browser
+==============
+
+.. py:module:: fsspec_browser
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   fsspec_browser.__version__
+
+
+Package Contents
+----------------
+
+.. py:data:: __version__
+   :value: '0.1.0'
+
+
