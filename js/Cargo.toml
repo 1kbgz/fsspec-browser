@@ -1,0 +1,16 @@
+[package]
+name = "fsspec_browser_js"
+version = "0.1.0"
+edition = "2021"
+publish = false
+keywords = ["experimental"]
+include = ["src/**/*", "Cargo.toml", "package.json"]
+
+[lib]
+name = "fsspec_browser"
+path = "src/rust/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+fsspec_browser = { path = "../rust", version = "*" }
+wasm-bindgen = "=0.2.121"

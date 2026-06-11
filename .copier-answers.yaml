@@ -1,0 +1,12 @@
+# Changes here will be overwritten by Copier
+_commit: 9b3c202
+_src_path: https://github.com/python-project-templates/base.git
+add_docs: true
+add_extension: rustjswasm
+add_wiki: false
+email: dev@1kbgz.com
+github: 1kbgz
+project_description: terminal and web browser for fsspec backends
+project_name: fsspec-browser
+python_version_primary: '3.11'
+team: the fsspec-browser authors

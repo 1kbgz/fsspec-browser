@@ -1,0 +1,17 @@
+[package]
+name = "fsspec_browser"
+version = "0.1.0"
+authors = ["the fsspec-browser authors <dev@1kbgz.com>"]
+edition = "2021"
+license = "Apache-2.0"
+readme = "../README.md"
+repository = "https://github.com/1kbgz/fsspec-browser"
+description = "terminal and web browser for fsspec backends"
+
+[lib]
+name = "fsspec_browser"
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
