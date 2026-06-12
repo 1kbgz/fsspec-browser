@@ -32,7 +32,9 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
-dependencies = []
+dependencies = [
+    "fsspec",
+]
 
 [project.optional-dependencies]
 develop = [
@@ -56,6 +58,8 @@ develop = [
 ]
 
 [project.scripts]
+fsspec-browser = "fsspec_browser.browser:main"
+fsspec-browser-web = "fsspec_browser.web:main"
 
 [project.urls]
 Repository = "https://github.com/1kbgz/fsspec-browser"
@@ -205,3 +209,13 @@ section-order = [
     "F401",
     "F403",
 ]
+
+[tool.yardang]
+title = "fsspec-browser"
+root = "README.md"
+pages = [
+    "docs/src/terminal.md",
+    "docs/src/web.md",
+    "docs/src/api.md",
+]
+use-autoapi = false

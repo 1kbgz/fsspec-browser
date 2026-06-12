@@ -10,7 +10,7 @@ path = "rust/python/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-fsspec_browser = { path = "./rust", version = "*" }
+fsspec_browser_core = { package = "fsspec_browser", path = "./rust", version = "*", features = ["browser"] }
 pyo3 = { version = "0.28.2", features = ["abi3", "extension-module", "multiple-pymethods"] }
 
 [profile.release]
