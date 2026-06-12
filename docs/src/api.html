@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="prev" title="Web" href="web.html">
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
-        <title>fsspec_browser - fsspec-browser v0.1.0</title>
+        <title>API - fsspec-browser v0.1.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
@@ -196,7 +196,12 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  
+  <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="terminal.html">Terminal</a></li>
+<li class="toctree-l1"><a class="reference internal" href="web.html">Web</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">API</a></li>
+</ul>
+
 </div>
 </div>
 
@@ -215,7 +220,7 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="../../_sources/autoapi/fsspec_browser/index.rst.txt" title="View this page">
+  <a class="muted-link" href="../../_sources/docs/src/api.md.txt" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
@@ -233,26 +238,33 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section id="module-fsspec_browser">
-<span id="fsspec-browser"></span><h1>fsspec_browser<a class="headerlink" href="#module-fsspec_browser" title="Link to this heading">¶</a></h1>
-<section id="attributes">
-<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
-<div class="table-wrapper autosummary longtable docutils container">
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#fsspec_browser.__version__" title="fsspec_browser.__version__"><code class="xref py py-obj docutils literal notranslate"><span class="pre">__version__</span></code></a></p></td>
-<td><p></p></td>
-</tr>
-</tbody>
-</table>
-</div>
+          <section class="tex2jax_ignore mathjax_ignore" id="api">
+<h1>API<a class="headerlink" href="#api" title="Link to this heading">¶</a></h1>
+<p>The public Python surface is intentionally small. Most users should prefer the <code class="docutils literal notranslate"><span class="pre">fsspec-browser</span></code> and <code class="docutils literal notranslate"><span class="pre">fsspec-browser-web</span></code> command-line tools; these functions exist for embedding or testing the launchers and web server.</p>
+<section id="module-fsspec_browser.browser">
+<span id="terminal-entrypoint"></span><h2>Terminal Entrypoint<a class="headerlink" href="#module-fsspec_browser.browser" title="Link to this heading">¶</a></h2>
+<p>Python entrypoint for the Rust terminal browser.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="fsspec_browser.browser.run">
+<span class="sig-prename descclassname"><span class="pre">fsspec_browser.browser.</span></span><span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">argv</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="../../_modules/fsspec_browser/browser.html#run"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#fsspec_browser.browser.run" title="Link to this definition">¶</a></dt>
+<dd><p>Run the Rust browser.</p>
+</dd></dl>
+
 </section>
-<section id="package-contents">
-<h2>Package Contents<a class="headerlink" href="#package-contents" title="Link to this heading">¶</a></h2>
-<dl class="py data">
-<dt class="sig sig-object py" id="fsspec_browser.__version__">
-<span class="sig-prename descclassname"><span class="pre">fsspec_browser.</span></span><span class="sig-name descname"><span class="pre">__version__</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'0.1.0'</span></em><a class="headerlink" href="#fsspec_browser.__version__" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
+<section id="module-fsspec_browser.web">
+<span id="web-entrypoint-and-helpers"></span><h2>Web Entrypoint And Helpers<a class="headerlink" href="#module-fsspec_browser.web" title="Link to this heading">¶</a></h2>
+<p>Web entrypoint for browsing fsspec filesystems.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="fsspec_browser.web.BrowserServer">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fsspec_browser.web.</span></span><span class="sig-name descname"><span class="pre">BrowserServer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server_address</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RequestHandlerClass</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bind_and_activate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/fsspec_browser/web.html#BrowserServer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#fsspec_browser.web.BrowserServer" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ThreadingHTTPServer</span></code></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="fsspec_browser.web.BrowserState">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">fsspec_browser.web.</span></span><span class="sig-name descname"><span class="pre">BrowserState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'Any'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">root_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'str'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">root_url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'str'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">static_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'Path'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">download_root</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'Path'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preview_bytes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'int'</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">page_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="s"><span class="pre">'int'</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/fsspec_browser/web.html#BrowserState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#fsspec_browser.web.BrowserState" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+</dd></dl>
 
 </section>
 </section>
@@ -263,7 +275,17 @@
         
         <div class="related-pages">
           
-          
+          <a class="prev-page" href="web.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Web</div>
+                
+              </div>
+            </a>
         </div>
         <div class="bottom-of-page">
           <div class="left-details">
@@ -294,10 +316,14 @@
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">fsspec_browser</a><ul>
-<li><a class="reference internal" href="#attributes">Attributes</a></li>
-<li><a class="reference internal" href="#package-contents">Package Contents</a><ul>
-<li><a class="reference internal" href="#fsspec_browser.__version__"><code class="docutils literal notranslate"><span class="pre">__version__</span></code></a></li>
+<li><a class="reference internal" href="#">API</a><ul>
+<li><a class="reference internal" href="#module-fsspec_browser.browser">Terminal Entrypoint</a><ul>
+<li><a class="reference internal" href="#fsspec_browser.browser.run"><code class="docutils literal notranslate"><span class="pre">run()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-fsspec_browser.web">Web Entrypoint And Helpers</a><ul>
+<li><a class="reference internal" href="#fsspec_browser.web.BrowserServer"><code class="docutils literal notranslate"><span class="pre">BrowserServer</span></code></a></li>
+<li><a class="reference internal" href="#fsspec_browser.web.BrowserState"><code class="docutils literal notranslate"><span class="pre">BrowserState</span></code></a></li>
 </ul>
 </li>
 </ul>

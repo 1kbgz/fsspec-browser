@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Terminal" href="docs/src/terminal.html">
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
         <title>fsspec-browser v0.1.0</title>
@@ -196,7 +196,12 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  
+  <ul>
+<li class="toctree-l1"><a class="reference internal" href="docs/src/terminal.html">Terminal</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docs/src/web.html">Web</a></li>
+<li class="toctree-l1"><a class="reference internal" href="docs/src/api.html">API</a></li>
+</ul>
+
 </div>
 </div>
 
@@ -237,17 +242,43 @@
 </div>
 <section class="tex2jax_ignore mathjax_ignore" id="fsspec-browser">
 <h1>fsspec-browser<a class="headerlink" href="#fsspec-browser" title="Link to this heading">¶</a></h1>
-<p>terminal and web browser for fsspec backends</p>
+<p>Terminal and web browser for fsspec-backed filesystems.</p>
 <p><a class="reference external" href="https://github.com/1kbgz/fsspec-browser/actions/workflows/build.yaml"><img alt="Build Status" src="https://github.com/1kbgz/fsspec-browser/actions/workflows/build.yaml/badge.svg?branch=main&amp;event=push" /></a>
 <a class="reference external" href="https://codecov.io/gh/1kbgz/fsspec-browser"><img alt="codecov" src="https://codecov.io/gh/1kbgz/fsspec-browser/branch/main/graph/badge.svg" /></a>
 <a class="reference external" href="https://github.com/1kbgz/fsspec-browser"><img alt="License" src="https://img.shields.io/github/license/1kbgz/fsspec-browser" /></a>
 <a class="reference external" href="https://pypi.python.org/pypi/fsspec-browser"><img alt="PyPI" src="https://img.shields.io/pypi/v/fsspec-browser.svg" /></a></p>
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h2>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>This library was generated using <a class="reference external" href="https://copier.readthedocs.io/en/stable/">copier</a> from the <a class="reference external" href="https://github.com/python-project-templates/base">Base Python Project Template repository</a>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">fsspec-browser</span></code> lets you inspect local files, object stores, and other fsspec-compatible filesystems from a terminal UI or a local web UI. It is built for browsing, previewing, and downloading files without writing one-off scripts.</p>
+<p><img alt="fsspec-browser web UI" src="_images/browser.png" /></p>
+<p><img alt="fsspec-browser terminal UI" src="_images/terminal.png" /></p>
+</section>
+<section id="install">
+<h2>Install<a class="headerlink" href="#install" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>fsspec-browser
+</pre></div>
 </div>
+<p>Install any fsspec backend packages your URLs require, such as S3, GCS, SSH, or cloud vendor integrations.</p>
+</section>
+<section id="terminal-browser">
+<h2>Terminal Browser<a class="headerlink" href="#terminal-browser" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>fsspec-browser<span class="w"> </span>/tmp
+fsspec-browser<span class="w"> </span>s3-rs://my-bucket/path<span class="w"> </span>-o<span class="w"> </span><span class="nv">endpoint_url</span><span class="o">=</span>https://...
+</pre></div>
+</div>
+<p>Use arrow keys or <code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code> to move, <code class="docutils literal notranslate"><span class="pre">Enter</span></code> to open directories, <code class="docutils literal notranslate"><span class="pre">p</span></code> to preview remote files, and <code class="docutils literal notranslate"><span class="pre">d</span></code> to download the selected file.</p>
+</section>
+<section id="web-browser">
+<h2>Web Browser<a class="headerlink" href="#web-browser" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>fsspec-browser-web<span class="w"> </span>/tmp<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8765</span>
+fsspec-browser-web<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8765</span>
+</pre></div>
+</div>
+<p>When started without a path, the web UI opens a connection form. File previews are explicit and bounded by <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span></code>.</p>
+</section>
+<section id="documentation">
+<h2>Documentation<a class="headerlink" href="#documentation" title="Link to this heading">¶</a></h2>
+<p>See the full docs for terminal usage, web usage, and Python API reference.</p>
 </section>
 </section>
 
@@ -256,7 +287,15 @@
       <footer>
         
         <div class="related-pages">
-          
+          <a class="next-page" href="docs/src/terminal.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Terminal</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
           
         </div>
         <div class="bottom-of-page">
