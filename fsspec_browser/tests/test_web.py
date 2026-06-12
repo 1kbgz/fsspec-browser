@@ -41,6 +41,16 @@ def test_parse_args_without_path_starts_without_session():
     assert args.preview_bytes == 100 * 1024 * 1024
 
 
+def test_default_static_assets_exist():
+    from fsspec_browser import web
+
+    static_dir = web._default_static_dir()
+
+    assert (static_dir / "index.html").is_file()
+    assert (static_dir / "cdn" / "index.js").is_file()
+    assert (static_dir / "css" / "index.css").is_file()
+
+
 def test_create_state_passes_storage_options(monkeypatch, tmp_path):
     from fsspec_browser import web
 
