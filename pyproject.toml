@@ -161,6 +161,7 @@ packages = [
     "Cargo.lock",
 ]
 exclude = [
+    "fsspec_browser/extension",
     "js/node_modules",
     "rust/Makefile",
     "target",
@@ -169,6 +170,9 @@ exclude = [
 [tool.hatch.build.targets.wheel]
 packages = [
     "fsspec_browser",
+]
+artifacts = [
+    "fsspec_browser/extension/**/*",
 ]
 exclude = [
     "js",
