@@ -31,9 +31,9 @@ struct Args {
 }
 
 #[derive(Clone, Debug)]
-struct SessionDetails {
-    url: String,
-    storage_options: HashMap<String, String>,
+pub struct SessionDetails {
+    pub url: String,
+    pub storage_options: HashMap<String, String>,
 }
 
 impl Args {
@@ -199,12 +199,12 @@ Keys:
 }
 
 #[derive(Clone, Debug)]
-struct ListPage {
-    entries: Vec<FileInfo>,
-    has_more: bool,
+pub struct ListPage {
+    pub entries: Vec<FileInfo>,
+    pub has_more: bool,
 }
 
-trait BrowserBackend {
+pub trait BrowserBackend {
     fn name(&self) -> &str;
     fn auto_preview(&self) -> bool {
         false
@@ -215,6 +215,8 @@ trait BrowserBackend {
     fn download(&self, path: &str, local: &Path) -> FsResult<()>;
     fn display_path(&self, path: &str) -> String;
 }
+
+pub type BackendResult = FsResult<(Box<dyn BrowserBackend>, String)>;
 
 struct FsspecBackend<F: FileSystem> {
     fs: F,
@@ -314,7 +316,10 @@ fn path_to_string(path: &Path) -> FsResult<String> {
         .ok_or_else(|| FsError::Other("non-UTF-8 path".to_string()))
 }
 
-fn build_backend(session: &SessionDetails) -> FsResult<(Box<dyn BrowserBackend>, String)> {
+fn build_backend<F>(session: &SessionDetails, fallback: &F) -> BackendResult
+where
+    F: Fn(&SessionDetails, &str) -> BackendResult,
+{
     if !session.url.contains("://") {
         return Ok((
             Box::new(FsspecBackend::new(
@@ -368,10 +373,14 @@ fn build_backend(session: &SessionDetails) -> FsResult<(Box<dyn BrowserBackend>,
                 start,
             ))
         }
-        other => Err(FsError::NotSupported(format!(
-            "Rust browser does not yet have a native or Python-proxy backend for protocol: {other}"
-        ))),
+        other => fallback(session, other),
     }
+}
+
+fn unsupported_backend(_session: &SessionDetails, protocol: &str) -> BackendResult {
+    Err(FsError::NotSupported(format!(
+        "Rust browser does not yet have a native backend for protocol: {protocol}"
+    )))
 }
 
 fn strip_local_url(url: &str) -> Option<String> {
@@ -1060,7 +1069,10 @@ enum TerminalAction {
     NewSession,
 }
 
-fn run_terminal(mut app: BrowserApp) -> Result<(), Box<dyn std::error::Error>> {
+fn run_terminal<F>(mut app: BrowserApp, fallback: &F) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn(&SessionDetails, &str) -> BackendResult,
+{
     loop {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -1079,7 +1091,7 @@ fn run_terminal(mut app: BrowserApp) -> Result<(), Box<dyn std::error::Error>> {
                 let Some(session) = prompt_session(Some(&default_url))? else {
                     return Ok(());
                 };
-                let (backend, start_path) = build_backend(&session)?;
+                let (backend, start_path) = build_backend(&session, fallback)?;
                 app = BrowserApp::new(backend, start_path, app.page_size, app.preview_bytes);
             }
         }
@@ -1170,7 +1182,13 @@ fn handle_key(app: &mut BrowserApp, code: KeyCode, modifiers: KeyModifiers) -> b
     }
 }
 
-pub fn run_browser(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_browser_with_fallback<F>(
+    args: Vec<String>,
+    fallback: F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn(&SessionDetails, &str) -> BackendResult,
+{
     let Some(args) = Args::parse(args.into_iter()).map_err(FsError::InvalidArgument)? else {
         print_help();
         return Ok(());
@@ -1181,10 +1199,14 @@ pub fn run_browser(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> 
     }) else {
         return Ok(());
     };
-    let (backend, start_path) = build_backend(&session)?;
+    let (backend, start_path) = build_backend(&session, &fallback)?;
     let app = BrowserApp::new(backend, start_path, args.page_size, args.preview_bytes);
-    run_terminal(app)?;
+    run_terminal(app, &fallback)?;
     Ok(())
+}
+
+pub fn run_browser(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    run_browser_with_fallback(args, unsupported_backend)
 }
 
 pub fn run_browser_from_env() -> Result<(), Box<dyn std::error::Error>> {
