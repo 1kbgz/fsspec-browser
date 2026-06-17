@@ -489,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "fsspec_browser"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crossterm",
  "fsspec_rs",
@@ -502,7 +502,7 @@ dependencies = [
 
 [[package]]
 name = "fsspec_browser_js"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fsspec_browser",
  "wasm-bindgen",
@@ -510,22 +510,34 @@ dependencies = [
 
 [[package]]
 name = "fsspec_browser_py"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fsspec_browser",
+ "fsspec_rs",
+ "fsspec_rs_bridge",
  "pyo3",
 ]
 
 [[package]]
 name = "fsspec_rs"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0862b578aa8455dd094e77d089b7c34958c221fae1b8d2bc3f5074f80f5c4a5b"
+checksum = "7f624a596c2484433ab2c3fccd4fd2de8911bf98f4a36e140ff0efb3b5163467"
 dependencies = [
  "bytes",
  "object_store",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "fsspec_rs_bridge"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6171730e5712ae178e54c860e2689abf6a42d98f4c1fdbad14d113b1e7b94c7"
+dependencies = [
+ "fsspec_rs",
+ "pyo3",
 ]
 
 [[package]]
