@@ -43,7 +43,7 @@ Use `Refresh` to reload the selected directory level. Use `Download` to copy the
 | `--host`                           | `127.0.0.1` | Server host                                |
 | `--port`                           | `0`         | Server port; `0` chooses an available port |
 | `--page-size`                      | `256`       | Entries revealed per directory page        |
-| `--preview-bytes`                  | `104857600` | Maximum bytes read for file preview        |
+| `--preview-bytes`                  | `1048576` | Maximum bytes read for file preview        |
 | `--download-root`                  | `.`         | Directory where downloads are written      |
 | `--no-open`                        | off         | Do not open a browser tab                  |
 
