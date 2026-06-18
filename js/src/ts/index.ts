@@ -1,7 +1,4 @@
 import { FileTree } from "@pierre/trees";
-import * as wasm from "../../dist/pkg/fsspec_browser";
-
-export * as wasm from "../../dist/pkg/fsspec_browser";
 
 type ApiEntry = {
   display_path: string;
@@ -57,12 +54,24 @@ let rootItem: BrowserItem | null = null;
 let currentSelection = "";
 let detachTreeInteractions: (() => void) | null = null;
 let dynamicLoadTimer: number | null = null;
-
-export const foo = () => wasm.foo();
+let sessionInFlight = false;
+let previewRequestId = 0;
 
 type Theme = "dark" | "light";
 
 const themeKey = "fsspec-browser-theme";
+const apiToken =
+  document
+    .querySelector('meta[name="fsspec-browser-token"]')
+    ?.getAttribute("content") ?? "";
+
+const apiHeaders = (headers?: HeadersInit) => {
+  const result = new Headers(headers);
+  if (apiToken) {
+    result.set("x-fsspec-browser-token", apiToken);
+  }
+  return result;
+};
 
 const storedTheme = () => {
   try {
@@ -143,10 +152,28 @@ const formatSize = (size: number | null) => {
 };
 
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(url, init);
-  const payload = await response.json();
+  const response = await fetch(url, {
+    ...init,
+    headers: apiHeaders(init?.headers),
+  });
+  const text = await response.text();
+  let payload: unknown = {};
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      if (!response.ok) {
+        throw new Error(response.statusText || text);
+      }
+      throw new Error("invalid JSON response");
+    }
+  }
   if (!response.ok) {
-    throw new Error(payload.error || response.statusText);
+    const message =
+      payload && typeof payload === "object" && "error" in payload
+        ? String((payload as { error: unknown }).error)
+        : response.statusText;
+    throw new Error(message || `HTTP ${response.status}`);
   }
   return payload as T;
 };
@@ -168,6 +195,7 @@ const parseStorageOptions = (value: string) => {
 };
 
 const resetBrowserState = () => {
+  previewRequestId += 1;
   detachTreeInteractions?.();
   detachTreeInteractions = null;
   if (dynamicLoadTimer !== null) {
@@ -199,8 +227,22 @@ const parentTreePath = (treePath: string) => {
 };
 
 const childTreePath = (parent: string, entry: ApiEntry) => {
-  const name = entry.name.replace(/\//g, "_");
-  return `${parent}${name}${entry.type === "directory" ? "/" : ""}`;
+  const name = entry.name.replace(/\//g, "_") || "_";
+  const suffix = entry.type === "directory" ? "/" : "";
+  const candidate = `${parent}${name}${suffix}`;
+  const existing = itemByTreePath.get(candidate);
+  if (!existing || existing.path === entry.path) {
+    return candidate;
+  }
+  return `${parent}${name}~${pathHash(entry.path)}${suffix}`;
+};
+
+const pathHash = (path: string) => {
+  let hash = 0;
+  for (let index = 0; index < path.length; index += 1) {
+    hash = (hash * 31 + path.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
 };
 
 const removeFromState = (treePath: string) => {
@@ -264,6 +306,9 @@ const showSessionForm = (path = "") => {
 };
 
 const connectSession = async () => {
+  if (sessionInFlight) {
+    return;
+  }
   const pathInput = document.getElementById("session-path");
   const optionsInput = document.getElementById("session-options");
   if (!(pathInput instanceof HTMLInputElement)) {
@@ -277,13 +322,18 @@ const connectSession = async () => {
     optionsInput instanceof HTMLTextAreaElement
       ? parseStorageOptions(optionsInput.value)
       : {};
-  setStatus(`Opening ${path}`);
-  const config = await fetchJson<ApiConfig>("api/session", {
-    body: JSON.stringify({ path, storage_options: storageOptions }),
-    headers: { "content-type": "application/json" },
-    method: "POST",
-  });
-  await startSession(config);
+  sessionInFlight = true;
+  try {
+    setStatus(`Opening ${path}`);
+    const config = await fetchJson<ApiConfig>("api/session", {
+      body: JSON.stringify({ path, storage_options: storageOptions }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    await startSession(config);
+  } finally {
+    sessionInFlight = false;
+  }
 };
 
 const detailLines = (item: BrowserItem) => {
@@ -494,9 +544,21 @@ const previewItem = async (treePath: string) => {
   }
 
   setPreview(item.name, "Loading preview...", item.display_path);
-  const preview = await fetchJson<ApiPreview>(
-    `api/preview?${queryPath(item.path)}`,
-  );
+  const requestId = ++previewRequestId;
+  let preview: ApiPreview;
+  try {
+    preview = await fetchJson<ApiPreview>(
+      `api/preview?${queryPath(item.path)}`,
+    );
+  } catch (error) {
+    if (requestId === previewRequestId && currentSelection === treePath) {
+      throw error;
+    }
+    return;
+  }
+  if (requestId !== previewRequestId || currentSelection !== treePath) {
+    return;
+  }
   if (preview.kind === "binary") {
     setPreview(
       item.name,
@@ -533,9 +595,18 @@ const downloadSelection = async () => {
 };
 
 const refreshSelectedLevel = async () => {
-  await loadDirectory(selectedParent(), { refresh: true });
-  showSelectionDetails();
-  queueDynamicLoadCheck();
+  const parent = selectedParent();
+  if (loadingParents.has(parent)) {
+    return;
+  }
+  loadingParents.add(parent);
+  try {
+    await loadDirectory(parent, { refresh: true });
+    showSelectionDetails();
+    queueDynamicLoadCheck();
+  } finally {
+    loadingParents.delete(parent);
+  }
 };
 
 const parentWithMoreForPath = (treePath: string) => {
@@ -692,6 +763,9 @@ const renderShell = () => {
     downloadSelection().catch((error: Error) => setStatus(error.message));
   });
   window.addEventListener("keydown", (event) => {
+    if (isEditableTarget(event.target)) {
+      return;
+    }
     if (
       event.key === "r" &&
       !event.metaKey &&
@@ -719,6 +793,12 @@ const renderShell = () => {
     }
   });
 };
+
+const isEditableTarget = (target: EventTarget | null) =>
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  target instanceof HTMLSelectElement ||
+  (target instanceof HTMLElement && target.isContentEditable);
 
 const startSession = async (config: ApiConfig) => {
   if (!config.active || !config.root_path || !config.display_root) {

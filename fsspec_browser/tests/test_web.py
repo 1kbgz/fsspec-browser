@@ -1,5 +1,8 @@
+import json
 from datetime import datetime, timezone
+from http.client import HTTPConnection
 from pathlib import Path
+from threading import Thread
 
 
 def test_parse_args_accepts_terminal_storage_options():
@@ -38,7 +41,7 @@ def test_parse_args_without_path_starts_without_session():
     args = web._parse_args([])
 
     assert args.path is None
-    assert args.preview_bytes == 100 * 1024 * 1024
+    assert args.preview_bytes == 1 * 1024 * 1024
 
 
 def test_default_static_assets_exist():
@@ -49,6 +52,103 @@ def test_default_static_assets_exist():
     assert (static_dir / "index.html").is_file()
     assert (static_dir / "cdn" / "index.js").is_file()
     assert (static_dir / "css" / "index.css").is_file()
+
+
+def test_loopback_host_detection():
+    from fsspec_browser import web
+
+    assert web._is_loopback_host("127.0.0.1:8000") is True
+    assert web._is_loopback_host("[::1]:8000") is True
+    assert web._is_loopback_host("localhost") is True
+    assert web._is_loopback_host("example.com") is False
+
+
+def test_api_rejects_untrusted_host(tmp_path):
+    from fsspec_browser import web
+
+    server = web.create_server("127.0.0.1", 0, None, static_dir=tmp_path, download_root=tmp_path)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _host, port = server.server_address[:2]
+        connection = HTTPConnection("127.0.0.1", port)
+        connection.request(
+            "POST",
+            "/api/session",
+            body=b"{}",
+            headers={"content-type": "application/json", "host": "example.com"},
+        )
+        response = connection.getresponse()
+        assert response.status == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_api_rejects_missing_token(tmp_path):
+    from fsspec_browser import web
+
+    server = web.create_server("127.0.0.1", 0, None, static_dir=tmp_path, download_root=tmp_path)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _host, port = server.server_address[:2]
+        connection = HTTPConnection("127.0.0.1", port)
+        connection.request("GET", "/api/config", headers={"host": f"127.0.0.1:{port}"})
+        response = connection.getresponse()
+        assert response.status == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_static_index_injects_token(tmp_path):
+    from fsspec_browser import web
+
+    (tmp_path / "index.html").write_text("<html><head></head><body></body></html>")
+    server = web.create_server("127.0.0.1", 0, None, static_dir=tmp_path, download_root=tmp_path)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _host, port = server.server_address[:2]
+        connection = HTTPConnection("127.0.0.1", port)
+        connection.request("GET", "/", headers={"host": f"127.0.0.1:{port}"})
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 200
+        assert f'name="fsspec-browser-token" content="{server.token}"' in body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_api_accepts_valid_token(tmp_path):
+    from fsspec_browser import web
+
+    server = web.create_server("127.0.0.1", 0, None, static_dir=tmp_path, download_root=tmp_path)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _host, port = server.server_address[:2]
+        connection = HTTPConnection("127.0.0.1", port)
+        connection.request(
+            "GET",
+            "/api/config",
+            headers={
+                "host": f"127.0.0.1:{port}",
+                "x-fsspec-browser-token": server.token,
+            },
+        )
+        response = connection.getresponse()
+        assert response.status == 200
+        assert json.loads(response.read()) == {"active": False}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_create_state_passes_storage_options(monkeypatch, tmp_path):

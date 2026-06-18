@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import mimetypes
+import secrets
 import shutil
 import sys
 import webbrowser
@@ -18,7 +20,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import fsspec
 
-MAX_PREVIEW_BYTES = 100 * 1024 * 1024
+MAX_PREVIEW_BYTES = 1 * 1024 * 1024
 _METADATA_KEYS = (
     ("created", "created"),
     ("ctime", "created"),
@@ -53,10 +55,27 @@ class BrowserServer(ThreadingHTTPServer):
     download_root: Path
     page_size: int
     preview_bytes: int
+    token: str
 
 
 def _default_static_dir() -> Path:
     return Path(__file__).with_name("extension")
+
+
+def _is_loopback_host(value: str | None) -> bool:
+    if not value:
+        return False
+    host = value.rsplit("@", 1)[-1].strip().lower()
+    if host.startswith("["):
+        host = host[1:].split("]", 1)[0]
+    else:
+        host = host.split(":", 1)[0]
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def create_state(
@@ -260,6 +279,7 @@ def create_server(
     server.download_root = Path(download_root)
     server.page_size = max(page_size, 1)
     server.preview_bytes = max(preview_bytes, 1)
+    server.token = secrets.token_urlsafe(32)
     return server
 
 
@@ -269,6 +289,9 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         try:
+            if parsed.path.startswith("/api/") and not self._trusted_api_request():
+                self._send_json({"error": "untrusted API request"}, HTTPStatus.FORBIDDEN)
+                return
             if parsed.path == "/api/config":
                 self._send_json(self._config_payload())
             elif parsed.path == "/api/list":
@@ -292,6 +315,9 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
+            if not self._trusted_api_request():
+                self._send_json({"error": "untrusted API request"}, HTTPStatus.FORBIDDEN)
+                return
             if parsed.path == "/api/session":
                 self._create_session()
                 return
@@ -331,6 +357,18 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
         if self.server.state is None:
             raise ValueError("no active browser session")
         return self.server.state
+
+    def _trusted_browser_request(self) -> bool:
+        if not _is_loopback_host(self.headers.get("host")):
+            return False
+        origin = self.headers.get("origin")
+        if origin and not _is_loopback_host(urlparse(origin).hostname):
+            return False
+        return True
+
+    def _trusted_api_request(self) -> bool:
+        token = self.headers.get("x-fsspec-browser-token")
+        return self._trusted_browser_request() and secrets.compare_digest(token or "", self.server.token)
 
     def _config_payload(self) -> dict[str, Any]:
         state = self.server.state
@@ -381,6 +419,11 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
 
         data = target.read_bytes()
         content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        if target.name == "index.html":
+            content_type = "text/html"
+            html = data.decode("utf-8")
+            token_meta = f'<meta name="fsspec-browser-token" content="{self.server.token}" />'
+            data = html.replace("</head>", f"    {token_meta}\n  </head>", 1).encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("content-type", content_type)
         self.send_header("content-length", str(len(data)))

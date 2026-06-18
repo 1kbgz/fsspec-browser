@@ -5,8 +5,6 @@ requirements:  ## install required dev dependencies
 	rustup component add clippy
 	cargo install --force --locked cargo-nextest
 	cargo install --force --locked cargo-llvm-cov
-	cargo install --force --locked wasm-bindgen-cli --version 0.2.121
-	rustup target add wasm32-unknown-unknown
 
 develop: requirements  ## install required dev dependencies
 

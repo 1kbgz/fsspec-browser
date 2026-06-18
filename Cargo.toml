@@ -19,11 +19,7 @@ pyo3 = { version = "0.28.2", features = ["abi3", "extension-module", "multiple-p
 panic = 'abort'
 lto = true
 
-[profile.test.junit]
-path = "junit.xml"
-
 [workspace]
 members = [
-    "js",
     "rust",
 ]
