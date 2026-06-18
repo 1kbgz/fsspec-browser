@@ -501,14 +501,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fsspec_browser_js"
-version = "0.1.1"
-dependencies = [
- "fsspec_browser",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "fsspec_browser_py"
 version = "0.1.1"
 dependencies = [

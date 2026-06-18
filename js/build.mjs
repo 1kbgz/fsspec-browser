@@ -18,6 +18,8 @@ const BUNDLES = [
 ];
 
 async function build() {
+  fs.rmSync("dist", { recursive: true, force: true });
+
   // Bundle css
   await bundle_css();
 
@@ -38,7 +40,8 @@ async function build() {
   await cpy("dist/**/*", "../fsspec_browser/extension", {
     filter: (file) =>
       !file.relativePath.startsWith("esm/") &&
-      !file.relativePath.startsWith("dist/esm/"),
+      !file.relativePath.startsWith("dist/esm/") &&
+      !file.relativePath.endsWith(".map"),
   });
 }
 

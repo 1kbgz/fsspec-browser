@@ -893,7 +893,7 @@ fn metadata_lines(info: &FileInfo) -> Vec<String> {
         lines.push(format!("modified: {}", humantime::format_rfc3339(modified)));
     }
     let mut extra: Vec<_> = info.extra.iter().collect();
-    extra.sort_by(|(left, _), (right, _)| left.cmp(right));
+    extra.sort_by_key(|(key, _)| *key);
     for (key, value) in extra {
         if !value.is_empty() {
             lines.push(format!("{key}: {value}"));
