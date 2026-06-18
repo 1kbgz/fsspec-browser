@@ -68,7 +68,7 @@ Homepage = "https://github.com/1kbgz/fsspec-browser"
 [tool.bumpversion]
 current_version = "0.1.1"
 commit = true
-tag = true
+tag = false 
 commit_args = "-s"
 
 [[tool.bumpversion.files]]
@@ -86,10 +86,10 @@ filename = "js/package.json"
 search = '"version": "{current_version}"'
 replace = '"version": "{new_version}"'
 
-[[tool.bumpversion.files]]
-filename = "js/Cargo.toml"
-search = 'version = "{current_version}"'
-replace = 'version = "{new_version}"'
+# [[tool.bumpversion.files]]
+# filename = "js/Cargo.toml"
+# search = 'version = "{current_version}"'
+# replace = 'version = "{new_version}"'
 
 [[tool.bumpversion.files]]
 filename = "Cargo.toml"
