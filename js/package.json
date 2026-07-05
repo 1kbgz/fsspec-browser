@@ -26,10 +26,6 @@
     "access": "public"
   },
   "scripts": {
-<<<<<<< before updating
-=======
-    "setup": "cargo install -f wasm-bindgen-cli --version 0.2.126 --locked",
->>>>>>> after updating
     "build:debug": "node build.mjs --debug",
     "build:prod": "node build.mjs",
     "build": "pnpm run build:prod",
