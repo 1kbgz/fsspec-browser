@@ -42,6 +42,7 @@ async function build() {
   fs.mkdirSync("../fsspec_browser/extension", { recursive: true });
   await cpy("dist/**/*", "../fsspec_browser/extension", {
     filter: (file) =>
+      !file.relativePath.startsWith("esm/") &&
       !file.relativePath.startsWith("dist/esm/") &&
       !file.relativePath.endsWith(".map"),
   });
