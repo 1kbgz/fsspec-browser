@@ -138,6 +138,17 @@ exclude_also = [
 ignore_errors = true
 fail_under = 50
 
+[tool.hatch.build]
+artifacts = [
+    "fsspec_browser/*.dll",
+    "fsspec_browser/*.dylib",
+    "fsspec_browser/*.so",
+    "fsspec_browser/extension",
+]
+
+[tool.hatch.build.sources]
+src = "/"
+
 [tool.hatch.build.hooks.hatch-js]
 path = "js"
 build_cmd = "build"
@@ -161,7 +172,15 @@ packages = [
     "Cargo.lock",
 ]
 exclude = [
+<<<<<<< before updating
     "fsspec_browser/extension",
+=======
+    "fsspec_browser/*.dll",
+    "fsspec_browser/*.dylib",
+    "fsspec_browser/*.so",
+    "fsspec_browser/extension",
+    "js/dist",
+>>>>>>> after updating
     "js/node_modules",
     "rust/Makefile",
     "target",

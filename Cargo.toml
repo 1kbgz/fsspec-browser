@@ -10,10 +10,15 @@ path = "rust/python/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
+<<<<<<< before updating
 fsspec_browser_core = { package = "fsspec_browser", path = "./rust", version = "*", features = ["browser"] }
 fsspec_rs = "0.1.2"
 fsspec_rs_bridge = "0.1.2"
 pyo3 = { version = "0.28.2", features = ["abi3", "extension-module", "multiple-pymethods"] }
+=======
+fsspec_browser = { path = "./rust", version = "*" }
+pyo3 = { version = "0.29.0", features = ["abi3", "extension-module", "multiple-pymethods"] }
+>>>>>>> after updating
 
 [profile.release]
 panic = 'abort'
