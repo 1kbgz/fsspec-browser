@@ -3,6 +3,8 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
 use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -204,7 +206,7 @@ pub struct ListPage {
     pub has_more: bool,
 }
 
-pub trait BrowserBackend {
+pub trait BrowserBackend: Send {
     fn name(&self) -> &str;
     fn auto_preview(&self) -> bool {
         false
@@ -254,7 +256,7 @@ impl<F: FileSystem> FsspecBackend<F> {
     }
 }
 
-impl<F: FileSystem> BrowserBackend for FsspecBackend<F> {
+impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
     fn name(&self) -> &str {
         self.name
     }
@@ -362,6 +364,7 @@ where
             };
             let mut cfg = S3Config::new(bucket.clone());
             apply_s3_options(&mut cfg, &session.storage_options);
+            validate_s3_config(&cfg)?;
             Ok((
                 Box::new(FsspecBackend::new(
                     S3Fs::new(cfg)?,
@@ -436,6 +439,34 @@ fn apply_s3_options(cfg: &mut S3Config, options: &HashMap<String, String>) {
     }
 }
 
+fn validate_s3_config(cfg: &S3Config) -> FsResult<()> {
+    if let Some(endpoint) = &cfg.endpoint_url {
+        validate_endpoint_url(endpoint)?;
+    }
+    Ok(())
+}
+
+fn validate_endpoint_url(endpoint: &str) -> FsResult<()> {
+    let parsed = Url::parse(endpoint).map_err(|err| FsError::InvalidArgument(err.to_string()))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(FsError::InvalidArgument(format!(
+                "endpoint_url must use http or https, got {scheme}"
+            )));
+        }
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| FsError::InvalidArgument("endpoint_url must include a host".into()))?;
+    if host == "..." || host.contains("...") {
+        return Err(FsError::InvalidArgument(
+            "endpoint_url contains placeholder ellipsis".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn option_value(options: &HashMap<String, String>, keys: &[&str]) -> Option<String> {
     keys.iter()
         .find_map(|key| options.get(*key).filter(|value| !value.is_empty()).cloned())
@@ -489,8 +520,39 @@ struct VisibleRow {
     kind: RowKind,
 }
 
+type SharedBackend = Arc<Mutex<Box<dyn BrowserBackend>>>;
+
+enum PendingKind {
+    ListPage {
+        path: Vec<usize>,
+        dir: String,
+        offset: usize,
+        select_after: Option<String>,
+    },
+    Preview {
+        path: String,
+        size: u64,
+    },
+    Download {
+        display_path: String,
+        local: PathBuf,
+    },
+}
+
+enum JobResult {
+    ListPage(Result<ListPage, String>),
+    Preview(Result<Vec<u8>, String>),
+    Download(Result<(), String>),
+}
+
+struct PendingJob {
+    kind: PendingKind,
+    receiver: mpsc::Receiver<JobResult>,
+}
+
 struct BrowserApp {
-    backend: Box<dyn BrowserBackend>,
+    backend: SharedBackend,
+    backend_name: String,
     root: EntryNode,
     rows: Vec<VisibleRow>,
     selected: usize,
@@ -500,6 +562,7 @@ struct BrowserApp {
     preview_cache: HashMap<String, Vec<String>>,
     preview_requests: HashSet<String>,
     new_session_requested: bool,
+    pending: Option<PendingJob>,
 }
 
 impl BrowserApp {
@@ -509,8 +572,10 @@ impl BrowserApp {
         page_size: usize,
         preview_bytes: usize,
     ) -> Self {
+        let backend_name = backend.name().to_string();
         let mut app = Self {
-            backend,
+            backend: Arc::new(Mutex::new(backend)),
+            backend_name,
             root: EntryNode::root(start_path),
             rows: Vec::new(),
             selected: 0,
@@ -520,6 +585,7 @@ impl BrowserApp {
             preview_cache: HashMap::new(),
             preview_requests: HashSet::new(),
             new_session_requested: false,
+            pending: None,
         };
         app.load_more_at(&[]);
         app
@@ -535,7 +601,225 @@ impl BrowserApp {
         requested
     }
 
+    fn is_busy(&mut self) -> bool {
+        self.poll_pending();
+        if self.pending.is_some() {
+            self.message = "busy; press q or ctrl-c to quit".to_string();
+            return true;
+        }
+        false
+    }
+
+    fn poll_pending(&mut self) {
+        let Some(job) = self.pending.take() else {
+            return;
+        };
+        match job.receiver.try_recv() {
+            Ok(result) => self.apply_job_result(job.kind, result),
+            Err(mpsc::TryRecvError::Empty) => {
+                self.pending = Some(job);
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.message = "background operation failed".to_string();
+            }
+        }
+    }
+
+    fn apply_job_result(&mut self, kind: PendingKind, result: JobResult) {
+        match (kind, result) {
+            (
+                PendingKind::ListPage {
+                    path,
+                    dir,
+                    offset,
+                    select_after,
+                },
+                JobResult::ListPage(result),
+            ) => match result {
+                Ok(page) => self.apply_list_page(path, dir, offset, page, select_after),
+                Err(err) => {
+                    if let Some(node) = self.node_mut(&path) {
+                        node.error = Some(err.clone());
+                        node.exhausted = true;
+                    }
+                    self.message = format!("error: {err}");
+                    self.rebuild_rows();
+                }
+            },
+            (PendingKind::Preview { path, size }, JobResult::Preview(result)) => match result {
+                Ok(bytes) => {
+                    let lines = bytes_to_preview_lines(&bytes, size > bytes.len() as u64);
+                    self.preview_cache.insert(path.clone(), lines);
+                    self.message = format!("preview loaded for {}", self.display_path(&path));
+                }
+                Err(err) => {
+                    self.preview_cache
+                        .insert(path.clone(), vec![format!("preview error: {err}")]);
+                    self.message = format!("preview error: {err}");
+                }
+            },
+            (
+                PendingKind::Download {
+                    display_path,
+                    local,
+                },
+                JobResult::Download(result),
+            ) => match result {
+                Ok(()) => {
+                    self.message = format!("downloaded {display_path} to {}", local.display());
+                }
+                Err(err) => {
+                    self.message = format!("download error: {err}");
+                }
+            },
+            _ => {
+                self.message = "background operation returned unexpected result".to_string();
+            }
+        }
+    }
+
+    fn apply_list_page(
+        &mut self,
+        path: Vec<usize>,
+        dir: String,
+        offset: usize,
+        page: ListPage,
+        select_after: Option<String>,
+    ) {
+        let count = page.entries.len();
+        if let Some(node) = self.node_mut(&path) {
+            for info in page.entries {
+                node.children.push(EntryNode::new(info));
+            }
+            node.next_offset = offset + count;
+            node.exhausted = count == 0 || !page.has_more;
+            node.error = None;
+        }
+        self.message = format!("loaded {count} entries from {}", self.display_path(&dir));
+        self.rebuild_rows();
+        if let Some(name) = select_after {
+            if let Some(index) = self.row_index_by_name(&name) {
+                self.selected = index;
+            } else if let Some(index) = self.row_index(&path) {
+                self.selected = index;
+            }
+        }
+    }
+
+    fn start_list_page(
+        &mut self,
+        path: Vec<usize>,
+        dir: String,
+        offset: usize,
+        select_after: Option<String>,
+    ) {
+        let backend = Arc::clone(&self.backend);
+        let page_size = self.page_size;
+        let worker_dir = dir.clone();
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            let result = backend
+                .lock()
+                .map_err(|err| err.to_string())
+                .and_then(|backend| {
+                    backend
+                        .list_page(&worker_dir, offset, page_size)
+                        .map_err(|err| err.to_string())
+                });
+            let _ = sender.send(JobResult::ListPage(result));
+        });
+        self.message = format!("loading {}", self.display_path(&dir));
+        self.pending = Some(PendingJob {
+            kind: PendingKind::ListPage {
+                path,
+                dir,
+                offset,
+                select_after,
+            },
+            receiver,
+        });
+    }
+
+    fn start_preview(&mut self, path: String, size: u64) {
+        let backend = Arc::clone(&self.backend);
+        let preview_bytes = self.preview_bytes;
+        let worker_path = path.clone();
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            let result = backend
+                .lock()
+                .map_err(|err| err.to_string())
+                .and_then(|backend| {
+                    backend
+                        .preview(&worker_path, preview_bytes)
+                        .map_err(|err| err.to_string())
+                });
+            let _ = sender.send(JobResult::Preview(result));
+        });
+        self.pending = Some(PendingJob {
+            kind: PendingKind::Preview { path, size },
+            receiver,
+        });
+    }
+
+    fn start_download(&mut self, path: String, display_path: String, local: PathBuf) {
+        let backend = Arc::clone(&self.backend);
+        let worker_path = path.clone();
+        let worker_local = local.clone();
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            let result = backend
+                .lock()
+                .map_err(|err| err.to_string())
+                .and_then(|backend| {
+                    backend
+                        .download(&worker_path, &worker_local)
+                        .map_err(|err| err.to_string())
+                });
+            let _ = sender.send(JobResult::Download(result));
+        });
+        self.message = format!("downloading {display_path}");
+        self.pending = Some(PendingJob {
+            kind: PendingKind::Download {
+                display_path,
+                local,
+            },
+            receiver,
+        });
+    }
+
+    fn display_path(&self, path: &str) -> String {
+        self.backend
+            .try_lock()
+            .map(|backend| backend.display_path(path))
+            .unwrap_or_else(|_| path.to_string())
+    }
+
+    fn parent_path(&self, path: &str) -> String {
+        self.backend
+            .try_lock()
+            .map(|backend| backend.parent(path))
+            .unwrap_or_else(|_| path.to_string())
+    }
+
+    fn auto_preview(&self) -> bool {
+        self.backend
+            .try_lock()
+            .map(|backend| backend.auto_preview())
+            .unwrap_or(false)
+    }
+
+    fn is_preview_pending(&self, path: &str) -> bool {
+        matches!(
+            self.pending.as_ref().map(|job| &job.kind),
+            Some(PendingKind::Preview { path: pending, .. }) if pending == path
+        )
+    }
+
     fn refresh_selected_level(&mut self) {
+        if self.is_busy() {
+            return;
+        }
         let Some(row) = self.rows.get(self.selected).cloned() else {
             return;
         };
@@ -562,15 +846,8 @@ impl BrowserApp {
         }
         self.preview_cache.clear();
         self.preview_requests.clear();
-        self.load_more_at(&refresh_path);
-        if let Some(name) = selected_name {
-            if let Some(index) = self.row_index_by_name(&name) {
-                self.selected = index;
-            } else if let Some(index) = self.row_index(&refresh_path) {
-                self.selected = index;
-            }
-        }
-        self.message = format!("refreshed {}", self.backend.display_path(&dir));
+        self.message = format!("refreshing {}", self.display_path(&dir));
+        self.start_list_page(refresh_path, dir, 0, selected_name);
     }
 
     fn move_selection(&mut self, delta: isize) {
@@ -593,6 +870,9 @@ impl BrowserApp {
     }
 
     fn enter_selected(&mut self) {
+        if self.is_busy() {
+            return;
+        }
         let Some(row) = self.rows.get(self.selected).cloned() else {
             return;
         };
@@ -617,8 +897,11 @@ impl BrowserApp {
     }
 
     fn parent(&mut self) {
+        if self.is_busy() {
+            return;
+        }
         let current = self.root.info.name.clone();
-        let parent = self.backend.parent(&current);
+        let parent = self.parent_path(&current);
         if parent == current {
             return;
         }
@@ -630,6 +913,9 @@ impl BrowserApp {
     }
 
     fn toggle_expand_selected(&mut self) {
+        if self.is_busy() {
+            return;
+        }
         let Some(row) = self.rows.get(self.selected).cloned() else {
             return;
         };
@@ -658,6 +944,9 @@ impl BrowserApp {
     }
 
     fn request_preview_selected(&mut self) {
+        if self.is_busy() {
+            return;
+        }
         let Some(row) = self.rows.get(self.selected).cloned() else {
             return;
         };
@@ -673,11 +962,16 @@ impl BrowserApp {
             return;
         }
         let path = node.info.name.clone();
+        let size = node.info.size;
         self.preview_requests.insert(path.clone());
-        self.message = format!("preview requested for {}", self.backend.display_path(&path));
+        self.message = format!("reading preview for {}", self.display_path(&path));
+        self.start_preview(path, size);
     }
 
     fn download_selected(&mut self) {
+        if self.is_busy() {
+            return;
+        }
         let Some(row) = self.rows.get(self.selected).cloned() else {
             return;
         };
@@ -693,22 +987,18 @@ impl BrowserApp {
             return;
         }
         let path = node.info.name.clone();
-        let display_path = self.backend.display_path(&path);
+        let display_path = self.display_path(&path);
         let Some(local) = download_target(&display_path) else {
             self.message = format!("download target unavailable for {display_path}");
             return;
         };
-        match self.backend.download(&path, &local) {
-            Ok(()) => {
-                self.message = format!("downloaded {display_path} to {}", local.display());
-            }
-            Err(err) => {
-                self.message = format!("download error: {err}");
-            }
-        }
+        self.start_download(path, display_path, local);
     }
 
     fn load_more_at(&mut self, path: &[usize]) {
+        if self.is_busy() {
+            return;
+        }
         let Some(node) = self.node_ref(path) else {
             return;
         };
@@ -718,31 +1008,7 @@ impl BrowserApp {
         }
         let dir = node.info.name.clone();
         let offset = node.next_offset;
-        match self.backend.list_page(&dir, offset, self.page_size) {
-            Ok(page) => {
-                let count = page.entries.len();
-                if let Some(node) = self.node_mut(path) {
-                    for info in page.entries {
-                        node.children.push(EntryNode::new(info));
-                    }
-                    node.next_offset += count;
-                    node.exhausted = count == 0 || !page.has_more;
-                    node.error = None;
-                }
-                self.message = format!(
-                    "loaded {count} entries from {}",
-                    self.backend.display_path(&dir)
-                );
-            }
-            Err(err) => {
-                if let Some(node) = self.node_mut(path) {
-                    node.error = Some(err.to_string());
-                    node.exhausted = true;
-                }
-                self.message = format!("error: {err}");
-            }
-        }
-        self.rebuild_rows();
+        self.start_list_page(path.to_vec(), dir, offset, None);
     }
 
     fn prefetch_near_selection(&mut self) {
@@ -776,7 +1042,7 @@ impl BrowserApp {
         if node.info.is_dir() {
             let mut lines = vec![
                 format!("name: {}", basename(&node.info.name)),
-                format!("path: {}", self.backend.display_path(&node.info.name)),
+                format!("path: {}", self.display_path(&node.info.name)),
                 "type: directory".to_string(),
                 format!("loaded children: {}", node.children.len()),
             ];
@@ -789,7 +1055,7 @@ impl BrowserApp {
         if !node.info.is_file() {
             let mut lines = vec![
                 format!("name: {}", basename(&node.info.name)),
-                format!("path: {}", self.backend.display_path(&node.info.name)),
+                format!("path: {}", self.display_path(&node.info.name)),
                 format!("type: {}", node.info.file_type),
             ];
             lines.extend(metadata_lines(&node.info));
@@ -798,10 +1064,14 @@ impl BrowserApp {
         }
 
         let path = node.info.name.clone();
-        if !self.backend.auto_preview() && !self.preview_requests.contains(&path) {
+        let size = node.info.size;
+        if self.is_preview_pending(&path) {
+            return vec![format!("reading preview for {}", self.display_path(&path))];
+        }
+        if !self.auto_preview() && !self.preview_requests.contains(&path) {
             let mut lines = vec![
                 format!("name: {}", basename(&node.info.name)),
-                format!("path: {}", self.backend.display_path(&node.info.name)),
+                format!("path: {}", self.display_path(&node.info.name)),
                 format!("type: {}", node.info.file_type),
                 format!("size: {} B", node.info.size),
             ];
@@ -813,12 +1083,11 @@ impl BrowserApp {
         if let Some(lines) = self.preview_cache.get(&path) {
             return lines.clone();
         }
-        let lines = match self.backend.preview(&path, self.preview_bytes) {
-            Ok(bytes) => bytes_to_preview_lines(&bytes, node.info.size > bytes.len() as u64),
-            Err(err) => vec![format!("preview error: {err}")],
-        };
-        self.preview_cache.insert(path, lines.clone());
-        lines
+        if self.auto_preview() {
+            self.start_preview(path.clone(), size);
+            return vec![format!("reading preview for {}", self.display_path(&path))];
+        }
+        vec!["press p to read preview bytes".to_string()]
     }
 
     fn row_index(&self, path: &[usize]) -> Option<usize> {
@@ -1017,6 +1286,7 @@ fn row_label(app: &BrowserApp, row: &VisibleRow) -> Line<'static> {
 }
 
 fn draw(frame: &mut Frame<'_>, app: &mut BrowserApp) {
+    app.poll_pending();
     let area = frame.area();
     let vertical = Layout::default()
         .direction(Direction::Vertical)
@@ -1033,8 +1303,8 @@ fn draw(frame: &mut Frame<'_>, app: &mut BrowserApp) {
 
     let title = format!(
         "{} | {}",
-        app.backend.name(),
-        app.backend.display_path(&app.root.info.name)
+        app.backend_name,
+        app.display_path(&app.root.info.name)
     );
     frame.render_widget(Paragraph::new(title), vertical[0]);
 
@@ -1087,7 +1357,7 @@ where
         match result? {
             TerminalAction::Quit => return Ok(()),
             TerminalAction::NewSession => {
-                let default_url = app.backend.display_path(&app.root.info.name);
+                let default_url = app.display_path(&app.root.info.name);
                 let Some(session) = prompt_session(Some(&default_url))? else {
                     return Ok(());
                 };
@@ -1216,13 +1486,14 @@ pub fn run_browser_from_env() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
-    use std::rc::Rc;
+
+    type Calls = Arc<Mutex<Vec<(String, usize)>>>;
+    type PreviewCalls = Arc<Mutex<Vec<String>>>;
 
     struct MockBackend {
         pages: HashMap<(String, usize), ListPage>,
-        calls: Rc<RefCell<Vec<(String, usize)>>>,
-        preview_calls: Rc<RefCell<Vec<String>>>,
+        calls: Calls,
+        preview_calls: PreviewCalls,
         auto_preview: bool,
     }
 
@@ -1236,7 +1507,7 @@ mod tests {
         }
 
         fn list_page(&self, path: &str, offset: usize, _limit: usize) -> FsResult<ListPage> {
-            self.calls.borrow_mut().push((path.to_string(), offset));
+            self.calls.lock().unwrap().push((path.to_string(), offset));
             self.pages
                 .get(&(path.to_string(), offset))
                 .cloned()
@@ -1248,7 +1519,7 @@ mod tests {
         }
 
         fn preview(&self, _path: &str, _limit: usize) -> FsResult<Vec<u8>> {
-            self.preview_calls.borrow_mut().push(_path.to_string());
+            self.preview_calls.lock().unwrap().push(_path.to_string());
             Ok(Vec::new())
         }
 
@@ -1277,23 +1548,37 @@ mod tests {
         ListPage { entries, has_more }
     }
 
-    fn mock_app(
-        pages: HashMap<(String, usize), ListPage>,
-    ) -> (
-        BrowserApp,
-        Rc<RefCell<Vec<(String, usize)>>>,
-        Rc<RefCell<Vec<String>>>,
-    ) {
-        let calls = Rc::new(RefCell::new(Vec::new()));
-        let preview_calls = Rc::new(RefCell::new(Vec::new()));
+    fn mock_app(pages: HashMap<(String, usize), ListPage>) -> (BrowserApp, Calls, PreviewCalls) {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let preview_calls = Arc::new(Mutex::new(Vec::new()));
         let backend = MockBackend {
             pages,
             calls: calls.clone(),
             preview_calls: preview_calls.clone(),
             auto_preview: false,
         };
-        let app = BrowserApp::new(Box::new(backend), "/root".to_string(), 2, 16);
+        let mut app = BrowserApp::new(Box::new(backend), "/root".to_string(), 2, 16);
+        settle(&mut app);
         (app, calls, preview_calls)
+    }
+
+    fn settle(app: &mut BrowserApp) {
+        for _ in 0..100 {
+            app.poll_pending();
+            if app.pending.is_none() {
+                return;
+            }
+            thread::sleep(std::time::Duration::from_millis(1));
+        }
+        panic!("background operation did not finish");
+    }
+
+    fn call_log(calls: &Calls) -> Vec<(String, usize)> {
+        calls.lock().unwrap().clone()
+    }
+
+    fn preview_call_log(calls: &PreviewCalls) -> Vec<String> {
+        calls.lock().unwrap().clone()
     }
 
     #[test]
@@ -1314,6 +1599,20 @@ mod tests {
         let session = args.session().unwrap();
 
         assert_eq!(session.url, "s3-rs://bucket");
+    }
+
+    #[test]
+    fn endpoint_url_rejects_placeholder_ellipsis() {
+        let err = validate_endpoint_url("https://...").unwrap_err();
+
+        assert!(err.to_string().contains("placeholder ellipsis"));
+    }
+
+    #[test]
+    fn endpoint_url_requires_http_scheme() {
+        let err = validate_endpoint_url("ftp://example.com").unwrap_err();
+
+        assert!(err.to_string().contains("http or https"));
     }
 
     #[test]
@@ -1343,11 +1642,12 @@ mod tests {
         );
         let (mut app, calls, _) = mock_app(pages);
 
-        assert_eq!(calls.borrow().as_slice(), &[("/root".to_string(), 0)]);
+        assert_eq!(call_log(&calls).as_slice(), &[("/root".to_string(), 0)]);
         app.toggle_expand_selected();
+        settle(&mut app);
 
         assert_eq!(
-            calls.borrow().as_slice(),
+            call_log(&calls).as_slice(),
             &[("/root".to_string(), 0), ("/root/dir".to_string(), 0)]
         );
         assert_eq!(app.rows.len(), 2);
@@ -1367,6 +1667,7 @@ mod tests {
         let (mut app, _calls, _) = mock_app(pages);
 
         app.enter_selected();
+        settle(&mut app);
 
         assert_eq!(app.root.info.name, "/root/dir");
         assert_eq!(app.rows.len(), 1);
@@ -1390,9 +1691,10 @@ mod tests {
         let (mut app, calls, _) = mock_app(pages);
 
         app.move_selection(1);
+        settle(&mut app);
 
         assert_eq!(
-            calls.borrow().as_slice(),
+            call_log(&calls).as_slice(),
             &[("/root".to_string(), 0), ("/root".to_string(), 2)]
         );
         assert_eq!(app.rows.len(), 3);
@@ -1416,11 +1718,13 @@ mod tests {
         let (mut app, calls, _) = mock_app(pages);
 
         app.toggle_expand_selected();
+        settle(&mut app);
         app.selected = 1;
         app.refresh_selected_level();
+        settle(&mut app);
 
         assert_eq!(
-            calls.borrow().as_slice(),
+            call_log(&calls).as_slice(),
             &[
                 ("/root".to_string(), 0),
                 ("/root/dir".to_string(), 0),
@@ -1452,7 +1756,10 @@ mod tests {
 
         let lines = app.preview_lines();
 
-        assert_eq!(preview_calls.borrow().as_slice(), &[] as &[String]);
+        assert_eq!(
+            preview_call_log(&preview_calls).as_slice(),
+            &[] as &[String]
+        );
         assert_eq!(
             lines,
             vec![
@@ -1475,16 +1782,20 @@ mod tests {
 
         let lines = app.preview_lines();
 
-        assert_eq!(preview_calls.borrow().as_slice(), &[] as &[String]);
+        assert_eq!(
+            preview_call_log(&preview_calls).as_slice(),
+            &[] as &[String]
+        );
         assert!(lines
             .iter()
             .any(|line| line == "preview disabled to avoid remote reads"));
 
         app.request_preview_selected();
+        settle(&mut app);
         let _ = app.preview_lines();
 
         assert_eq!(
-            preview_calls.borrow().as_slice(),
+            preview_call_log(&preview_calls).as_slice(),
             &["/root/file.txt".to_string()]
         );
     }
@@ -1499,6 +1810,7 @@ mod tests {
         let (mut app, _calls, _) = mock_app(pages);
 
         app.download_selected();
+        settle(&mut app);
 
         assert_eq!(
             app.message,
