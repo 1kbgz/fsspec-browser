@@ -480,7 +480,7 @@ dependencies = [
 
 [[package]]
 name = "fsspec_browser"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crossterm",
  "fsspec_rs",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "fsspec_browser_py"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "fsspec_browser",
  "fsspec_rs",
