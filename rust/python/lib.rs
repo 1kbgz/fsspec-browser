@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use fsspec_browser_core::{BackendResult, BrowserBackend, ListPage, SessionDetails};
+use fsspec_browser_core::{BackendResult, BrowserBackend, ListPage, PreviewPage, SessionDetails};
 use fsspec_rs::{FileSystem, FileType, FsError, FsResult};
 use fsspec_rs_bridge::{url_to_fs, PyFsspecFs};
 use pyo3::prelude::*;
@@ -10,6 +10,7 @@ struct PythonBackend {
     name: String,
     root_marker: String,
     url: String,
+    database: bool,
 }
 
 impl PythonBackend {
@@ -27,6 +28,7 @@ impl PythonBackend {
                 name: format!("{protocol}-py"),
                 root_marker,
                 url: session.url.clone(),
+                database: protocol.starts_with("db+"),
             },
             start,
         ))
@@ -45,6 +47,8 @@ impl BrowserBackend for PythonBackend {
                 .cmp(&(b.file_type != FileType::Directory))
                 .then_with(|| a.name.cmp(&b.name))
         });
+        entries
+            .dedup_by(|left, right| left.name == right.name && left.file_type == right.file_type);
         let total = entries.len();
         let entries = entries.into_iter().skip(offset).take(limit).collect();
         Ok(ListPage {
@@ -57,8 +61,40 @@ impl BrowserBackend for PythonBackend {
         parent_path(path, &self.root_marker)
     }
 
-    fn preview(&self, path: &str, limit: usize) -> FsResult<Vec<u8>> {
-        self.fs.cat_file(path, Some(0), Some(limit as i64))
+    fn can_preview(&self, info: &fsspec_rs::FileInfo) -> bool {
+        info.is_file()
+            || (self.database
+                && info.is_dir()
+                && matches!(
+                    info.extra.get("kind").map(String::as_str),
+                    Some("table" | "view")
+                ))
+    }
+
+    fn preview(&self, path: &str, offset: usize, limit: usize) -> FsResult<PreviewPage> {
+        let info = self.fs.info(path)?;
+        let kind = info.extra.get("kind").map(String::as_str);
+        if self.database && matches!(kind, Some("table" | "view")) {
+            let data_path = format!(
+                "{}.jsonl?limit=101&offset={offset}",
+                path.trim_end_matches('/')
+            );
+            return jsonl_page(self.fs.cat_file(&data_path, None, None)?, offset);
+        }
+        if self.database && kind == Some("column") {
+            let data_path = format!("{path}?limit=101&offset={offset}");
+            return json_array_page(self.fs.cat_file(&data_path, None, None)?, offset);
+        }
+        let bytes = self
+            .fs
+            .cat_file(path, Some(offset as i64), Some((offset + limit) as i64))?;
+        let has_more = bytes.len() == limit;
+        let next_offset = offset + bytes.len();
+        Ok(PreviewPage {
+            bytes,
+            has_more,
+            next_offset,
+        })
     }
 
     fn download(&self, path: &str, local: &Path) -> FsResult<()> {
@@ -75,15 +111,47 @@ impl BrowserBackend for PythonBackend {
     }
 }
 
+fn jsonl_page(data: Vec<u8>, offset: usize) -> FsResult<PreviewPage> {
+    let text = String::from_utf8(data).map_err(|err| FsError::Other(err.to_string()))?;
+    let mut rows: Vec<&str> = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    let has_more = rows.len() > 100;
+    rows.truncate(100);
+    let next_offset = offset + rows.len();
+    Ok(PreviewPage {
+        bytes: format!("[\n{}\n]", rows.join(",\n")).into_bytes(),
+        has_more,
+        next_offset,
+    })
+}
+
+fn json_array_page(data: Vec<u8>, offset: usize) -> FsResult<PreviewPage> {
+    let mut values: Vec<serde_json::Value> =
+        serde_json::from_slice(&data).map_err(|err| FsError::Other(err.to_string()))?;
+    let has_more = values.len() > 100;
+    values.truncate(100);
+    let next_offset = offset + values.len();
+    Ok(PreviewPage {
+        bytes: serde_json::to_vec(&values).map_err(|err| FsError::Other(err.to_string()))?,
+        has_more,
+        next_offset,
+    })
+}
+
 fn build_python_backend(session: &SessionDetails, protocol: &str) -> BackendResult {
     let (backend, start) = PythonBackend::new(session, protocol)?;
     Ok((Box::new(backend), start))
 }
 
 #[pyfunction]
-fn run_browser(argv: Vec<String>) -> PyResult<()> {
-    fsspec_browser_core::run_browser_with_fallback(argv, build_python_backend)
-        .map_err(|err| pyo3::exceptions::PyRuntimeError::new_err(err.to_string()))
+fn run_browser(py: Python<'_>, argv: Vec<String>) -> PyResult<()> {
+    let result = py.detach(|| {
+        fsspec_browser_core::run_browser_with_fallback(argv, build_python_backend)
+            .map_err(|err| err.to_string())
+    });
+    result.map_err(pyo3::exceptions::PyRuntimeError::new_err)
 }
 
 #[pymodule]

@@ -36,6 +36,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+database = [
+    "fsspec-db[duckdb]",
+    "pandas",
+    "superstore",
+]
 develop = [
     "build",
     "bump-my-version",

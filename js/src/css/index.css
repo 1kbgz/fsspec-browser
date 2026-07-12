@@ -251,6 +251,28 @@ textarea {
   white-space: pre-wrap;
 }
 
+.preview-table {
+  border-collapse: collapse;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.preview-table th,
+.preview-table td {
+  border-bottom: 1px solid var(--border);
+  max-width: 320px;
+  overflow: hidden;
+  padding: 5px 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.preview-table th {
+  background: var(--panel-muted);
+  position: sticky;
+  top: 0;
+}
+
 #status {
   background: var(--status-bg);
   color: var(--status-fg);
