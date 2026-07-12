@@ -5,6 +5,7 @@ type ApiEntry = {
   metadata: Record<string, string>;
   name: string;
   path: string;
+  previewable: boolean;
   size: number | null;
   type: "directory" | "file";
 };
@@ -18,11 +19,15 @@ type ApiList = {
 };
 
 type ApiPreview = {
+  columns?: string[];
   content: string;
   display_path: string;
-  kind: "binary" | "json" | "text";
+  has_more?: boolean;
+  kind: "binary" | "json" | "table" | "text";
   metadata: Record<string, string>;
+  next_offset?: number | null;
   path: string;
+  rows?: Record<string, unknown>[];
   size: number | null;
   truncated: boolean;
 };
@@ -56,6 +61,8 @@ let detachTreeInteractions: (() => void) | null = null;
 let dynamicLoadTimer: number | null = null;
 let sessionInFlight = false;
 let previewRequestId = 0;
+let activePreview: ApiPreview | null = null;
+let previewLoadingMore = false;
 
 type Theme = "dark" | "light";
 
@@ -273,8 +280,38 @@ const setPreview = (title: string, body: string, meta = "") => {
     previewMeta.textContent = meta;
   }
   if (previewBody) {
+    previewBody.replaceChildren();
     previewBody.textContent = body;
   }
+};
+
+const renderTablePreview = (title: string, preview: ApiPreview) => {
+  const previewTitle = document.getElementById("preview-title");
+  const previewMeta = document.getElementById("preview-meta");
+  const previewBody = document.getElementById("preview-body");
+  if (previewTitle) previewTitle.textContent = title;
+  if (previewMeta) previewMeta.textContent = previewMetaText(preview);
+  if (!previewBody) return;
+  previewBody.replaceChildren();
+  const table = document.createElement("table");
+  table.className = "preview-table";
+  const columns = preview.columns || [];
+  const head = table.createTHead().insertRow();
+  for (const column of columns) {
+    const cell = document.createElement("th");
+    cell.textContent = column;
+    head.append(cell);
+  }
+  const body = table.createTBody();
+  for (const row of preview.rows || []) {
+    const tableRow = body.insertRow();
+    for (const column of columns) {
+      const value = row[column];
+      tableRow.insertCell().textContent =
+        value == null ? "null" : String(value);
+    }
+  }
+  previewBody.append(table);
 };
 
 const setSessionFormVisible = (visible: boolean) => {
@@ -285,7 +322,7 @@ const setSessionFormVisible = (visible: boolean) => {
 };
 
 const setControlsEnabled = (enabled: boolean) => {
-  for (const id of ["preview", "refresh", "download"]) {
+  for (const id of ["preview", "query", "refresh", "download"]) {
     const button = document.getElementById(id);
     if (button instanceof HTMLButtonElement) {
       button.disabled = !enabled;
@@ -536,7 +573,7 @@ const previewItem = async (treePath: string) => {
   if (!item) {
     return;
   }
-  if (item.type === "directory") {
+  if (item.type === "directory" && !item.previewable) {
     currentSelection = treePath;
     showSelectionDetails();
     setStatus(`Directory ${item.display_path}`);
@@ -544,6 +581,7 @@ const previewItem = async (treePath: string) => {
   }
 
   setPreview(item.name, "Loading preview...", item.display_path);
+  activePreview = null;
   const requestId = ++previewRequestId;
   let preview: ApiPreview;
   try {
@@ -567,7 +605,36 @@ const previewItem = async (treePath: string) => {
     );
     return;
   }
+  activePreview = preview;
+  if (preview.kind === "table") {
+    renderTablePreview(item.name, preview);
+    return;
+  }
   setPreview(item.name, preview.content, previewMetaText(preview));
+};
+
+const loadMorePreview = async () => {
+  if (
+    previewLoadingMore ||
+    !activePreview?.has_more ||
+    activePreview.next_offset == null
+  )
+    return;
+  const item = itemByTreePath.get(currentSelection);
+  if (!item) return;
+  previewLoadingMore = true;
+  try {
+    const page = await fetchJson<ApiPreview>(
+      `api/preview?${queryPath(item.path)}&offset=${activePreview.next_offset}`,
+    );
+    activePreview = {
+      ...page,
+      rows: [...(activePreview.rows || []), ...(page.rows || [])],
+    };
+    renderTablePreview(item.name, activePreview);
+  } finally {
+    previewLoadingMore = false;
+  }
 };
 
 const previewSelection = async () => {
@@ -575,6 +642,20 @@ const previewSelection = async () => {
     return;
   }
   await previewItem(currentSelection);
+};
+
+const previewSql = async () => {
+  const sql = window.prompt("SQL query to preview");
+  if (!sql?.trim()) {
+    return;
+  }
+  setPreview("SQL query", "Loading preview...", sql);
+  const preview = await fetchJson<ApiPreview>("api/query", {
+    body: JSON.stringify({ sql }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  setPreview("SQL query", preview.content, previewMetaText(preview));
 };
 
 const downloadSelection = async () => {
@@ -714,6 +795,7 @@ const renderShell = () => {
             <div class="actions">
                 <button id="new-session" type="button">New Session</button>
                 <button id="preview" type="button">Preview</button>
+                <button id="query" type="button">SQL Preview</button>
                 <button id="refresh" type="button">Refresh</button>
                 <button id="download" type="button">Download</button>
             </div>
@@ -755,6 +837,19 @@ const renderShell = () => {
   });
   document.getElementById("preview")?.addEventListener("click", () => {
     previewSelection().catch((error: Error) => setStatus(error.message));
+  });
+  document.getElementById("preview-body")?.addEventListener(
+    "scroll",
+    (event) => {
+      const target = event.currentTarget as HTMLElement;
+      if (target.scrollHeight - target.scrollTop - target.clientHeight < 160) {
+        loadMorePreview().catch((error: Error) => setStatus(error.message));
+      }
+    },
+    { passive: true },
+  );
+  document.getElementById("query")?.addEventListener("click", () => {
+    previewSql().catch((error: Error) => setStatus(error.message));
   });
   document.getElementById("refresh")?.addEventListener("click", () => {
     refreshSelectedLevel().catch((error: Error) => setStatus(error.message));
@@ -823,6 +918,7 @@ const startSession = async (config: ApiConfig) => {
     metadata: {},
     name: config.display_root,
     path: config.root_path,
+    previewable: false,
     size: null,
     treePath: "",
     type: "directory",

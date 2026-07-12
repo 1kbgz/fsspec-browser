@@ -519,6 +519,7 @@ dependencies = [
  "fsspec_rs",
  "fsspec_rs_bridge",
  "pyo3",
+ "serde_json",
 ]
 
 [[package]]

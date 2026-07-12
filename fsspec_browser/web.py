@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import ipaddress
+import itertools
 import json
 import mimetypes
 import secrets
@@ -47,6 +49,7 @@ class BrowserState:
     download_root: Path
     preview_bytes: int
     page_size: int
+    preview_rows: int
 
 
 class BrowserServer(ThreadingHTTPServer):
@@ -55,6 +58,7 @@ class BrowserServer(ThreadingHTTPServer):
     download_root: Path
     page_size: int
     preview_bytes: int
+    preview_rows: int
     token: str
 
 
@@ -85,9 +89,11 @@ def create_state(
     download_root: Path | str = ".",
     page_size: int = 256,
     preview_bytes: int = MAX_PREVIEW_BYTES,
+    preview_rows: int = 20,
     storage_options: dict[str, str] | None = None,
 ) -> BrowserState:
     fs, root_path = fsspec.core.url_to_fs(root_url, **(storage_options or {}))
+    root_path = root_path or getattr(fs, "root_marker", "/")
     return BrowserState(
         fs=fs,
         root_path=root_path,
@@ -95,6 +101,7 @@ def create_state(
         static_dir=static_dir or _default_static_dir(),
         download_root=Path(download_root),
         preview_bytes=max(preview_bytes, 1),
+        preview_rows=max(preview_rows, 1),
         page_size=max(page_size, 1),
     )
 
@@ -154,6 +161,7 @@ def _normalize_entry(fs: Any, entry: dict[str, Any] | str) -> dict[str, Any]:
         "type": item_type,
         "size": entry.get("size"),
         "metadata": _metadata(entry),
+        "previewable": item_type == "file" or entry.get("kind") in {"table", "view"},
     }
 
 
@@ -162,7 +170,8 @@ def list_entries(state: BrowserState, path: str | None = None, *, offset: int = 
     raw_entries = state.fs.ls(list_path, detail=True)
     if isinstance(raw_entries, dict):
         raw_entries = list(raw_entries.values())
-    entries = [_normalize_entry(state.fs, entry) for entry in raw_entries]
+    normalized = [_normalize_entry(state.fs, entry) for entry in raw_entries]
+    entries = list({(entry["path"], entry["type"]): entry for entry in normalized}.values())
     entries.sort(key=lambda item: (item["type"] != "directory", item["name"].casefold()))
     offset = max(offset, 0)
     next_offset = offset + state.page_size
@@ -180,10 +189,91 @@ def _is_json_path(display_path: str) -> bool:
     return display_path.lower().endswith(".json")
 
 
-def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None) -> dict[str, Any]:
+def _table_payload(
+    state: BrowserState,
+    path: str,
+    info: dict[str, Any],
+    rows: list[dict[str, Any]],
+    offset: int,
+    *,
+    kind: str = "table",
+) -> dict[str, Any]:
+    has_more = len(rows) > state.preview_rows
+    rows = rows[: state.preview_rows]
+    columns = list(rows[0]) if rows else []
+    return {
+        "path": path,
+        "display_path": _display_path(state.fs, path),
+        "size": info.get("size"),
+        "kind": kind,
+        "content": json.dumps(rows, indent=2, default=str),
+        "columns": columns,
+        "rows": rows,
+        "offset": offset,
+        "limit": state.preview_rows,
+        "has_more": has_more,
+        "next_offset": offset + len(rows) if has_more else None,
+        "metadata": {**_metadata(info), "rows": str(len(rows))},
+        "truncated": has_more,
+    }
+
+
+def _preview_delimited(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> dict[str, Any]:
+    with state.fs.open(path, "rt", newline="") as file:
+        reader = csv.DictReader(file)
+        rows = list(itertools.islice(reader, offset, offset + state.preview_rows + 1))
+    return _table_payload(state, path, info, rows, offset)
+
+
+def _preview_jsonl(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> dict[str, Any]:
+    with state.fs.open(path, "rt") as file:
+        lines = itertools.islice(file, offset, offset + state.preview_rows + 1)
+        rows = [json.loads(line) for line in lines if line.strip()]
+    if not all(isinstance(row, dict) for row in rows):
+        rows = [{"value": row} for row in rows]
+    return _table_payload(state, path, info, rows, offset)
+
+
+def _preview_parquet(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> dict[str, Any]:
+    import pyarrow.parquet as pq
+
+    wanted = state.preview_rows + 1
+    rows: list[dict[str, Any]] = []
+    skipped = 0
+    with state.fs.open(path, "rb") as file:
+        parquet = pq.ParquetFile(file)
+        for batch in parquet.iter_batches(batch_size=wanted):
+            batch_rows = batch.to_pylist()
+            if skipped + len(batch_rows) <= offset:
+                skipped += len(batch_rows)
+                continue
+            start = max(offset - skipped, 0)
+            rows.extend(batch_rows[start : start + wanted - len(rows)])
+            skipped += len(batch_rows)
+            if len(rows) >= wanted:
+                break
+    return _table_payload(state, path, info, rows, offset)
+
+
+def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None, offset: int = 0) -> dict[str, Any]:
     info = state.fs.info(path)
     if _is_directory(info):
+        if info.get("kind") in {"table", "view"}:
+            return _preview_relation(state, path, info, offset)
         raise IsADirectoryError(path)
+
+    display_path = _display_path(state.fs, path)
+    lower_path = display_path.lower()
+    if info.get("kind") == "column":
+        data = state.fs.cat_file(f"{path}?limit={state.preview_rows + 1}&offset={offset}")
+        values = json.loads(data)
+        return _table_payload(state, path, info, [{"value": value} for value in values], offset)
+    if lower_path.endswith(".csv"):
+        return _preview_delimited(state, path, info, offset)
+    if lower_path.endswith((".jsonl", ".ndjson")):
+        return _preview_jsonl(state, path, info, offset)
+    if lower_path.endswith(".parquet"):
+        return _preview_parquet(state, path, info, offset)
 
     max_bytes = state.preview_bytes if max_bytes is None else max(max_bytes, 1)
     with state.fs.open(path, "rb") as file:
@@ -191,7 +281,6 @@ def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None
 
     truncated = len(data) > max_bytes
     data = data[:max_bytes]
-    display_path = _display_path(state.fs, path)
 
     if b"\x00" in data:
         return {
@@ -214,7 +303,17 @@ def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None
 
     if _is_json_path(display_path) and not truncated:
         try:
-            content = json.dumps(json.loads(content), indent=2, sort_keys=True)
+            value = json.loads(content)
+            if isinstance(value, list):
+                rows = [row if isinstance(row, dict) else {"value": row} for row in value]
+                return _table_payload(
+                    state,
+                    path,
+                    info,
+                    rows[offset : offset + state.preview_rows + 1],
+                    offset,
+                )
+            content = json.dumps(value, indent=2, sort_keys=True)
             kind = "json"
         except json.JSONDecodeError:
             pass
@@ -228,6 +327,39 @@ def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None
         "metadata": _metadata(info),
         "truncated": truncated,
     }
+
+
+def preview_query(state: BrowserState, sql: str) -> dict[str, Any]:
+    sql = sql.strip().removesuffix(";")
+    if not sql:
+        raise ValueError("SQL query is empty")
+    if sql.split(None, 1)[0].upper() not in {"SELECT", "WITH"}:
+        raise ValueError("SQL preview only accepts SELECT or WITH queries")
+    query = getattr(state.fs, "query", None)
+    if query is None:
+        raise TypeError("active filesystem does not support SQL queries")
+    bounded_sql = f"SELECT * FROM ({sql}) AS __fsspec_browser_preview LIMIT {state.preview_rows + 1}"
+    table = query(bounded_sql)
+    truncated = table.num_rows > state.preview_rows
+    rows = table.slice(0, state.preview_rows).to_pylist()
+    return {
+        "path": "",
+        "display_path": "SQL query",
+        "size": None,
+        "kind": "table",
+        "content": json.dumps(rows, indent=2, default=str),
+        "metadata": {"rows": str(len(rows)), "columns": str(table.num_columns)},
+        "truncated": truncated,
+    }
+
+
+def _preview_relation(state: BrowserState, path: str, info: dict[str, Any], offset: int = 0) -> dict[str, Any]:
+    clean_path = path.rstrip("/")
+    data = state.fs.cat_file(f"{clean_path}.jsonl?limit={state.preview_rows + 1}&offset={offset}")
+    rows = [json.loads(line) for line in data.decode("utf-8").splitlines() if line]
+    result = _table_payload(state, path, info, rows, offset)
+    result["metadata"]["relation"] = str(info["kind"])
+    return result
 
 
 def _download_target(display_path: str, download_root: Path) -> Path:
@@ -272,6 +404,7 @@ def create_server(
     download_root: Path | str = ".",
     page_size: int = 256,
     preview_bytes: int = MAX_PREVIEW_BYTES,
+    preview_rows: int = 20,
 ) -> BrowserServer:
     server = BrowserServer((host, port), BrowserRequestHandler)
     server.state = state
@@ -279,6 +412,7 @@ def create_server(
     server.download_root = Path(download_root)
     server.page_size = max(page_size, 1)
     server.preview_bytes = max(preview_bytes, 1)
+    server.preview_rows = max(preview_rows, 1)
     server.token = secrets.token_urlsafe(32)
     return server
 
@@ -306,7 +440,8 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
                 if not path:
                     self._send_json({"error": "missing path"}, HTTPStatus.BAD_REQUEST)
                     return
-                self._send_json(preview_file(state, path))
+                offset = int(query.get("offset", ["0"])[0])
+                self._send_json(preview_file(state, path, offset=max(offset, 0)))
             else:
                 self._send_static(parsed.path)
         except Exception as exc:
@@ -320,6 +455,11 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/session":
                 self._create_session()
+                return
+            if parsed.path == "/api/query":
+                state = self._active_state()
+                payload = self._read_json()
+                self._send_json(preview_query(state, str(payload.get("sql") or "")))
                 return
             if parsed.path != "/api/download":
                 self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -398,6 +538,7 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
             download_root=self.server.download_root,
             page_size=self.server.page_size,
             preview_bytes=self.server.preview_bytes,
+            preview_rows=self.server.preview_rows,
             storage_options={str(key): str(value) for key, value in storage_options.items()},
         )
         self._send_json(self._config_payload())
@@ -459,6 +600,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--page-size", default=256, type=int, help="entries revealed per directory page")
     parser.add_argument("--preview-bytes", default=MAX_PREVIEW_BYTES, type=int, help="maximum file preview bytes")
+    parser.add_argument("--preview-rows", default=20, type=int, help="maximum database rows per preview")
     parser.add_argument("--host", default="127.0.0.1", help="host for the local web server")
     parser.add_argument("--port", default=0, type=int, help="port for the local web server")
     parser.add_argument("--download-root", default=".", help="directory where downloads are written")
@@ -467,6 +609,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     args.storage_options = _storage_options(args.storage_option)
     args.page_size = max(args.page_size, 1)
     args.preview_bytes = max(args.preview_bytes, 1)
+    args.preview_rows = max(args.preview_rows, 1)
     return args
 
 
@@ -478,6 +621,7 @@ def run(argv: Sequence[str] | None = None) -> int:
             download_root=args.download_root,
             page_size=args.page_size,
             preview_bytes=args.preview_bytes,
+            preview_rows=args.preview_rows,
             storage_options=args.storage_options,
         )
         if args.path
@@ -490,6 +634,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         download_root=args.download_root,
         page_size=args.page_size,
         preview_bytes=args.preview_bytes,
+        preview_rows=args.preview_rows,
     )
     host, port = server.server_address[:2]
     url = f"http://{host}:{port}/"

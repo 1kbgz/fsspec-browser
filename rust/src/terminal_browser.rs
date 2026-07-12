@@ -17,7 +17,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use ratatui::{Frame, Terminal};
 use url::Url;
 
@@ -206,14 +206,24 @@ pub struct ListPage {
     pub has_more: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct PreviewPage {
+    pub bytes: Vec<u8>,
+    pub has_more: bool,
+    pub next_offset: usize,
+}
+
 pub trait BrowserBackend: Send {
     fn name(&self) -> &str;
     fn auto_preview(&self) -> bool {
         false
     }
+    fn can_preview(&self, info: &FileInfo) -> bool {
+        info.is_file()
+    }
     fn list_page(&self, path: &str, offset: usize, limit: usize) -> FsResult<ListPage>;
     fn parent(&self, path: &str) -> String;
-    fn preview(&self, path: &str, limit: usize) -> FsResult<Vec<u8>>;
+    fn preview(&self, path: &str, offset: usize, limit: usize) -> FsResult<PreviewPage>;
     fn download(&self, path: &str, local: &Path) -> FsResult<()>;
     fn display_path(&self, path: &str) -> String;
 }
@@ -265,6 +275,10 @@ impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
         self.auto_preview
     }
 
+    fn can_preview(&self, info: &FileInfo) -> bool {
+        info.is_file()
+    }
+
     fn list_page(&self, path: &str, offset: usize, limit: usize) -> FsResult<ListPage> {
         let mut entries = self.fs.ls(path, true)?;
         entries.sort_by(|a, b| {
@@ -292,8 +306,17 @@ impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
         }
     }
 
-    fn preview(&self, path: &str, limit: usize) -> FsResult<Vec<u8>> {
-        self.fs.cat_file(path, Some(0), Some(limit as i64))
+    fn preview(&self, path: &str, offset: usize, limit: usize) -> FsResult<PreviewPage> {
+        let bytes = self
+            .fs
+            .cat_file(path, Some(offset as i64), Some((offset + limit) as i64))?;
+        let has_more = bytes.len() == limit;
+        let next_offset = offset + bytes.len();
+        Ok(PreviewPage {
+            bytes,
+            has_more,
+            next_offset,
+        })
     }
 
     fn download(&self, path: &str, local: &Path) -> FsResult<()> {
@@ -532,6 +555,7 @@ enum PendingKind {
     Preview {
         path: String,
         size: u64,
+        offset: usize,
     },
     Download {
         display_path: String,
@@ -541,13 +565,19 @@ enum PendingKind {
 
 enum JobResult {
     ListPage(Result<ListPage, String>),
-    Preview(Result<Vec<u8>, String>),
+    Preview(Result<PreviewPage, String>),
     Download(Result<(), String>),
 }
 
 struct PendingJob {
     kind: PendingKind,
     receiver: mpsc::Receiver<JobResult>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PaneFocus {
+    Browser,
+    Preview,
 }
 
 struct BrowserApp {
@@ -559,10 +589,21 @@ struct BrowserApp {
     page_size: usize,
     preview_bytes: usize,
     message: String,
-    preview_cache: HashMap<String, Vec<String>>,
+    preview_cache: HashMap<String, PreviewCache>,
     preview_requests: HashSet<String>,
+    preview_scroll: u16,
+    preview_horizontal: u16,
+    active_preview_path: Option<String>,
+    focus: PaneFocus,
+    command_prefix: bool,
     new_session_requested: bool,
     pending: Option<PendingJob>,
+}
+
+struct PreviewCache {
+    lines: Vec<String>,
+    next_offset: usize,
+    has_more: bool,
 }
 
 impl BrowserApp {
@@ -584,6 +625,11 @@ impl BrowserApp {
             message: String::new(),
             preview_cache: HashMap::new(),
             preview_requests: HashSet::new(),
+            preview_scroll: 0,
+            preview_horizontal: 0,
+            active_preview_path: None,
+            focus: PaneFocus::Browser,
+            command_prefix: false,
             new_session_requested: false,
             pending: None,
         };
@@ -646,18 +692,42 @@ impl BrowserApp {
                     self.rebuild_rows();
                 }
             },
-            (PendingKind::Preview { path, size }, JobResult::Preview(result)) => match result {
-                Ok(bytes) => {
-                    let lines = bytes_to_preview_lines(&bytes, size > bytes.len() as u64);
-                    self.preview_cache.insert(path.clone(), lines);
-                    self.message = format!("preview loaded for {}", self.display_path(&path));
+            (PendingKind::Preview { path, size, offset }, JobResult::Preview(result)) => {
+                match result {
+                    Ok(page) => {
+                        let lines = bytes_to_preview_lines(
+                            &page.bytes,
+                            !page.has_more && offset == 0 && size > page.bytes.len() as u64,
+                        );
+                        if offset == 0 {
+                            self.preview_cache.insert(
+                                path.clone(),
+                                PreviewCache {
+                                    lines,
+                                    next_offset: page.next_offset,
+                                    has_more: page.has_more,
+                                },
+                            );
+                        } else if let Some(cached) = self.preview_cache.get_mut(&path) {
+                            cached.lines.extend(lines);
+                            cached.next_offset = page.next_offset;
+                            cached.has_more = page.has_more;
+                        }
+                        self.message = format!("preview loaded for {}", self.display_path(&path));
+                    }
+                    Err(err) => {
+                        self.preview_cache.insert(
+                            path.clone(),
+                            PreviewCache {
+                                lines: vec![format!("preview error: {err}")],
+                                next_offset: 0,
+                                has_more: false,
+                            },
+                        );
+                        self.message = format!("preview error: {err}");
+                    }
                 }
-                Err(err) => {
-                    self.preview_cache
-                        .insert(path.clone(), vec![format!("preview error: {err}")]);
-                    self.message = format!("preview error: {err}");
-                }
-            },
+            }
             (
                 PendingKind::Download {
                     display_path,
@@ -740,7 +810,7 @@ impl BrowserApp {
         });
     }
 
-    fn start_preview(&mut self, path: String, size: u64) {
+    fn start_preview(&mut self, path: String, size: u64, offset: usize) {
         let backend = Arc::clone(&self.backend);
         let preview_bytes = self.preview_bytes;
         let worker_path = path.clone();
@@ -751,13 +821,13 @@ impl BrowserApp {
                 .map_err(|err| err.to_string())
                 .and_then(|backend| {
                     backend
-                        .preview(&worker_path, preview_bytes)
+                        .preview(&worker_path, offset, preview_bytes)
                         .map_err(|err| err.to_string())
                 });
             let _ = sender.send(JobResult::Preview(result));
         });
         self.pending = Some(PendingJob {
-            kind: PendingKind::Preview { path, size },
+            kind: PendingKind::Preview { path, size, offset },
             receiver,
         });
     }
@@ -806,6 +876,13 @@ impl BrowserApp {
         self.backend
             .try_lock()
             .map(|backend| backend.auto_preview())
+            .unwrap_or(false)
+    }
+
+    fn can_preview(&self, info: &FileInfo) -> bool {
+        self.backend
+            .try_lock()
+            .map(|backend| backend.can_preview(info))
             .unwrap_or(false)
     }
 
@@ -957,7 +1034,7 @@ impl BrowserApp {
         let Some(node) = self.node_ref(&row.path) else {
             return;
         };
-        if !node.info.is_file() {
+        if !self.can_preview(&node.info) {
             self.message = "preview unavailable for this entry".to_string();
             return;
         }
@@ -965,7 +1042,65 @@ impl BrowserApp {
         let size = node.info.size;
         self.preview_requests.insert(path.clone());
         self.message = format!("reading preview for {}", self.display_path(&path));
-        self.start_preview(path, size);
+        self.preview_scroll = 0;
+        self.preview_horizontal = 0;
+        self.active_preview_path = Some(path.clone());
+        self.start_preview(path, size, 0);
+    }
+
+    fn scroll_preview(&mut self, delta: i16) {
+        let Some(row) = self.rows.get(self.selected) else {
+            return;
+        };
+        let Some(node) = self.node_ref(&row.path) else {
+            return;
+        };
+        let path = node.info.name.clone();
+        let size = node.info.size;
+        let (line_count, has_more, next_offset) = self
+            .preview_cache
+            .get(&path)
+            .map(|cache| (cache.lines.len(), cache.has_more, cache.next_offset))
+            .unwrap_or((0, false, 0));
+        if line_count == 0 {
+            return;
+        }
+        self.preview_scroll = if delta < 0 {
+            self.preview_scroll.saturating_sub(delta.unsigned_abs())
+        } else {
+            self.preview_scroll
+                .saturating_add(delta as u16)
+                .min(line_count.saturating_sub(1) as u16)
+        };
+        if has_more
+            && self.preview_scroll as usize + 20 >= line_count
+            && !self.is_preview_pending(&path)
+        {
+            self.start_preview(path, size, next_offset);
+        }
+    }
+
+    fn scroll_preview_horizontal(&mut self, delta: i16) {
+        self.preview_horizontal = if delta < 0 {
+            self.preview_horizontal.saturating_sub(delta.unsigned_abs())
+        } else {
+            self.preview_horizontal.saturating_add(delta as u16)
+        };
+    }
+
+    fn preview_home(&mut self) {
+        self.preview_scroll = 0;
+    }
+
+    fn preview_end(&mut self) {
+        let line_count = self
+            .active_preview_path
+            .as_ref()
+            .and_then(|path| self.preview_cache.get(path))
+            .map(|cache| cache.lines.len())
+            .unwrap_or(0);
+        self.preview_scroll = line_count.saturating_sub(1).min(u16::MAX as usize) as u16;
+        self.scroll_preview(0);
     }
 
     fn download_selected(&mut self) {
@@ -1039,7 +1174,8 @@ impl BrowserApp {
         let Some(node) = self.node_ref(&row.path) else {
             return vec!["missing row".to_string()];
         };
-        if node.info.is_dir() {
+        let previewable = self.can_preview(&node.info);
+        if node.info.is_dir() && !previewable {
             let mut lines = vec![
                 format!("name: {}", basename(&node.info.name)),
                 format!("path: {}", self.display_path(&node.info.name)),
@@ -1052,7 +1188,7 @@ impl BrowserApp {
             }
             return lines;
         }
-        if !node.info.is_file() {
+        if !previewable {
             let mut lines = vec![
                 format!("name: {}", basename(&node.info.name)),
                 format!("path: {}", self.display_path(&node.info.name)),
@@ -1080,11 +1216,16 @@ impl BrowserApp {
             lines.push("press p to read preview bytes".to_string());
             return lines;
         }
-        if let Some(lines) = self.preview_cache.get(&path) {
-            return lines.clone();
+        if self.active_preview_path.as_deref() != Some(&path) {
+            self.preview_scroll = 0;
+            self.preview_horizontal = 0;
+            self.active_preview_path = Some(path.clone());
+        }
+        if let Some(cached) = self.preview_cache.get(&path) {
+            return cached.lines.clone();
         }
         if self.auto_preview() {
-            self.start_preview(path.clone(), size);
+            self.start_preview(path.clone(), size, 0);
             return vec![format!("reading preview for {}", self.display_path(&path))];
         }
         vec!["press p to read preview bytes".to_string()]
@@ -1177,6 +1318,9 @@ fn bytes_to_preview_lines(bytes: &[u8], truncated: bool) -> Vec<String> {
     }
     if !truncated {
         if let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) {
+            if let Some(lines) = json_table_lines(&value) {
+                return lines;
+            }
             if let Ok(pretty) = serde_json::to_string_pretty(&value) {
                 return pretty.lines().map(ToString::to_string).collect();
             }
@@ -1191,6 +1335,86 @@ fn bytes_to_preview_lines(bytes: &[u8], truncated: bool) -> Vec<String> {
         lines.push("...".to_string());
     }
     lines
+}
+
+fn json_table_lines(value: &serde_json::Value) -> Option<Vec<String>> {
+    let rows = value.as_array()?;
+    if rows.is_empty() {
+        return Some(vec!["(no rows)".to_string()]);
+    }
+    let columns = match rows.first()? {
+        serde_json::Value::Object(row) => row.keys().cloned().collect::<Vec<_>>(),
+        _ => vec!["value".to_string()],
+    };
+    let values = rows
+        .iter()
+        .map(|row| {
+            columns
+                .iter()
+                .map(|column| match row {
+                    serde_json::Value::Object(row) => row
+                        .get(column)
+                        .map(json_cell)
+                        .unwrap_or_else(|| "null".to_string()),
+                    value => json_cell(value),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let widths = columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| {
+            values
+                .iter()
+                .map(|row| row[index].chars().count())
+                .max()
+                .unwrap_or(0)
+                .max(column.chars().count())
+                .min(24)
+        })
+        .collect::<Vec<_>>();
+    let format_row = |row: &[String]| {
+        row.iter()
+            .enumerate()
+            .map(|(index, value)| {
+                format!(
+                    "{:<width$}",
+                    truncate_cell(value, widths[index]),
+                    width = widths[index]
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" | ")
+    };
+    let mut lines = vec![format_row(&columns)];
+    lines.push(
+        widths
+            .iter()
+            .map(|width| "-".repeat(*width))
+            .collect::<Vec<_>>()
+            .join("-+-"),
+    );
+    lines.extend(values.iter().map(|row| format_row(row)));
+    Some(lines)
+}
+
+fn json_cell(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) => value.clone(),
+        value => value.to_string(),
+    }
+}
+
+fn truncate_cell(value: &str, width: usize) -> String {
+    if value.chars().count() <= width {
+        return value.to_string();
+    }
+    value
+        .chars()
+        .take(width.saturating_sub(1))
+        .collect::<String>()
+        + "…"
 }
 
 fn download_target(display_path: &str) -> Option<PathBuf> {
@@ -1260,7 +1484,7 @@ fn row_label(app: &BrowserApp, row: &VisibleRow) -> Line<'static> {
         return Line::from(format!("{indent}... load more"));
     }
     let Some(node) = app.node_ref(&row.path) else {
-        return Line::from(format!("{indent}? missing"));
+        return Line::from(format!("{indent}? loading"));
     };
     let marker = if node.info.is_dir() {
         if node.expanded {
@@ -1317,18 +1541,39 @@ fn draw(frame: &mut Frame<'_>, app: &mut BrowserApp) {
     if !items.is_empty() {
         list_state.select(Some(app.selected));
     }
+    let list_border = if app.focus == PaneFocus::Browser {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
     let list = List::new(items)
-        .block(Block::default().title("files").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("files")
+                .borders(Borders::ALL)
+                .border_style(list_border),
+        )
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
     frame.render_stateful_widget(list, body[0], &mut list_state);
 
+    let preview_border = if app.focus == PaneFocus::Preview {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
     let preview = Paragraph::new(app.preview_lines().join("\n"))
-        .block(Block::default().title("preview").borders(Borders::ALL))
-        .wrap(Wrap { trim: false });
+        .block(
+            Block::default()
+                .title("preview")
+                .borders(Borders::ALL)
+                .border_style(preview_border),
+        )
+        .scroll((app.preview_scroll, app.preview_horizontal));
     frame.render_widget(preview, body[1]);
 
     let footer = format!(
-        "enter open | space expand/collapse | p preview | d download | n new session | h parent | r refresh | q/ctrl-c quit | {}",
+        "ctrl-a ←/→ focus | arrows navigate focused pane | p preview | d download | n new session | r refresh | q quit | {}{}",
+        if app.command_prefix { "prefix: ctrl-a | " } else { "" },
         app.message
     );
     frame.render_widget(Paragraph::new(footer), vertical[2]);
@@ -1393,8 +1638,62 @@ fn run_app(
 }
 
 fn handle_key(app: &mut BrowserApp, code: KeyCode, modifiers: KeyModifiers) -> bool {
+    if app.command_prefix {
+        app.command_prefix = false;
+        match code {
+            KeyCode::Left => {
+                app.focus = PaneFocus::Browser;
+                app.message = "browser pane focused".to_string();
+            }
+            KeyCode::Right => {
+                app.focus = PaneFocus::Preview;
+                app.message = "preview pane focused".to_string();
+            }
+            _ => app.message = "unknown ctrl-a command".to_string(),
+        }
+        return false;
+    }
+    if code == KeyCode::Char('a') && modifiers.contains(KeyModifiers::CONTROL) {
+        app.command_prefix = true;
+        app.message = "ctrl-a: press left or right to focus a pane".to_string();
+        return false;
+    }
+    if app.focus == PaneFocus::Preview {
+        match code {
+            KeyCode::Up => app.scroll_preview(-1),
+            KeyCode::Down => app.scroll_preview(1),
+            KeyCode::Left => app.scroll_preview_horizontal(-4),
+            KeyCode::Right => app.scroll_preview_horizontal(4),
+            KeyCode::PageUp => app.scroll_preview(-10),
+            KeyCode::PageDown => app.scroll_preview(10),
+            KeyCode::Home => app.preview_home(),
+            KeyCode::End => app.preview_end(),
+            _ => return handle_global_key(app, code, modifiers),
+        }
+        return false;
+    }
+    handle_global_key(app, code, modifiers)
+}
+
+fn handle_global_key(app: &mut BrowserApp, code: KeyCode, modifiers: KeyModifiers) -> bool {
     match (code, modifiers) {
         (KeyCode::Char('c'), modifiers) if modifiers.contains(KeyModifiers::CONTROL) => true,
+        (KeyCode::Char('u'), modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
+            app.scroll_preview(-10);
+            false
+        }
+        (KeyCode::Char('d'), modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
+            app.scroll_preview(10);
+            false
+        }
+        (KeyCode::Char('H'), _) => {
+            app.scroll_preview_horizontal(-10);
+            false
+        }
+        (KeyCode::Char('L'), _) => {
+            app.scroll_preview_horizontal(10);
+            false
+        }
         (KeyCode::Char('q'), _) | (KeyCode::Esc, _) => true,
         (KeyCode::Up, _) | (KeyCode::Char('k'), _) => {
             app.move_selection(-1);
@@ -1518,9 +1817,13 @@ mod tests {
             parent_path(path)
         }
 
-        fn preview(&self, _path: &str, _limit: usize) -> FsResult<Vec<u8>> {
+        fn preview(&self, _path: &str, offset: usize, _limit: usize) -> FsResult<PreviewPage> {
             self.preview_calls.lock().unwrap().push(_path.to_string());
-            Ok(Vec::new())
+            Ok(PreviewPage {
+                bytes: Vec::new(),
+                has_more: false,
+                next_offset: offset,
+            })
         }
 
         fn download(&self, _path: &str, _local: &Path) -> FsResult<()> {
@@ -1832,6 +2135,27 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_a_arrows_switch_pane_focus() {
+        let mut pages = HashMap::new();
+        pages.insert(("/root".to_string(), 0), page(Vec::new(), false));
+        let (mut app, _, _) = mock_app(pages);
+
+        assert!(!handle_key(
+            &mut app,
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL
+        ));
+        assert!(app.command_prefix);
+        assert!(!handle_key(&mut app, KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(app.focus, PaneFocus::Preview);
+        assert!(!app.command_prefix);
+
+        handle_key(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        handle_key(&mut app, KeyCode::Left, KeyModifiers::NONE);
+        assert_eq!(app.focus, PaneFocus::Browser);
+    }
+
+    #[test]
     fn plain_c_does_not_quit() {
         let mut pages = HashMap::new();
         pages.insert(("/root".to_string(), 0), page(Vec::new(), false));
@@ -1865,6 +2189,41 @@ mod tests {
                 "}".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn json_record_preview_is_rendered_as_table() {
+        assert_eq!(
+            bytes_to_preview_lines(
+                br#"[{"name":"ada","score":2},{"name":"grace","score":3}]"#,
+                false
+            ),
+            vec![
+                "name  | score".to_string(),
+                "------+------".to_string(),
+                "ada   | 2    ".to_string(),
+                "grace | 3    ".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn unresolved_rows_are_labeled_loading() {
+        let mut pages = HashMap::new();
+        pages.insert(("/root".to_string(), 0), page(Vec::new(), false));
+        let (app, _, _) = mock_app(pages);
+        let row = VisibleRow {
+            path: vec![0],
+            depth: 1,
+            kind: RowKind::Entry,
+        };
+
+        let label = row_label(&app, &row)
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert_eq!(label, "  ? loading");
     }
 
     #[test]

@@ -4,6 +4,8 @@ from http.client import HTTPConnection
 from pathlib import Path
 from threading import Thread
 
+import pytest
+
 
 def test_parse_args_accepts_terminal_storage_options():
     from fsspec_browser import web
@@ -175,6 +177,19 @@ def test_create_state_passes_storage_options(monkeypatch, tmp_path):
     assert calls == [("s3://bucket/path", {"endpoint_url": "https://s3.us-east-005.backblazeb2.com"})]
 
 
+def test_create_state_normalizes_empty_backend_root(monkeypatch, tmp_path):
+    from fsspec_browser import web
+
+    class FakeFs:
+        root_marker = "/"
+
+    monkeypatch.setattr(web.fsspec.core, "url_to_fs", lambda url, **kwargs: (FakeFs(), ""))
+
+    state = web.create_state("db+duckdb://", static_dir=tmp_path)
+
+    assert state.root_path == "/"
+
+
 def test_list_entries_sorts_directories_first(tmp_path):
     from fsspec_browser import web
 
@@ -207,6 +222,24 @@ def test_list_entries_paginates_by_page_size(tmp_path):
     assert second["next_offset"] is None
 
 
+def test_list_entries_deduplicates_backend_paths(tmp_path):
+    from fsspec_browser import web
+
+    class FakeFs:
+        def ls(self, path, detail=True):
+            return [
+                {"name": "/main", "type": "directory"},
+                {"name": "/main", "type": "directory"},
+            ]
+
+        def unstrip_protocol(self, path):
+            return path
+
+    state = web.BrowserState(FakeFs(), "/", "fake://", tmp_path, tmp_path, 1024, 256, 20)
+
+    assert [entry["name"] for entry in web.list_entries(state)["entries"]] == ["main"]
+
+
 def test_normalize_entry_includes_metadata():
     from fsspec_browser import web
 
@@ -231,6 +264,14 @@ def test_normalize_entry_includes_metadata():
         "modified": "2026-01-02T03:04:05+00:00",
         "etag": "abc",
     }
+
+
+def test_normalize_database_relation_is_previewable():
+    from fsspec_browser import web
+
+    entry = web._normalize_entry(object(), {"name": "/main/orders", "type": "directory", "kind": "view"})
+
+    assert entry["previewable"] is True
 
 
 def test_preview_file_formats_json(tmp_path):
@@ -258,6 +299,93 @@ def test_preview_file_does_not_format_truncated_json(tmp_path):
     assert preview["kind"] == "text"
     assert preview["content"] == '{"b": 1,'
     assert preview["truncated"] is True
+
+
+def test_preview_tabular_files_are_paged(tmp_path):
+    from fsspec_browser import web
+
+    csv_path = tmp_path / "data.csv"
+    csv_path.write_text("name,score\nada,2\ngrace,3\nlin,4\n")
+    jsonl_path = tmp_path / "data.jsonl"
+    jsonl_path.write_text('{"name":"ada","score":2}\n{"name":"grace","score":3}\n{"name":"lin","score":4}\n')
+    state = web.create_state(str(tmp_path), static_dir=tmp_path, download_root=tmp_path, preview_rows=2)
+
+    csv_page = web.preview_file(state, str(csv_path))
+    jsonl_page = web.preview_file(state, str(jsonl_path), offset=2)
+
+    assert csv_page["rows"] == [{"name": "ada", "score": "2"}, {"name": "grace", "score": "3"}]
+    assert csv_page["next_offset"] == 2
+    assert jsonl_page["rows"] == [{"name": "lin", "score": 4}]
+    assert jsonl_page["has_more"] is False
+
+
+def test_preview_parquet_is_paged(tmp_path):
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    from fsspec_browser import web
+
+    path = tmp_path / "data.parquet"
+    pq.write_table(pa.table({"name": ["ada", "grace", "lin"], "score": [2, 3, 4]}), path)
+    state = web.create_state(str(tmp_path), static_dir=tmp_path, download_root=tmp_path, preview_rows=2)
+
+    preview = web.preview_file(state, str(path))
+
+    assert preview["columns"] == ["name", "score"]
+    assert preview["rows"] == [{"name": "ada", "score": 2}, {"name": "grace", "score": 3}]
+    assert preview["has_more"] is True
+
+
+def test_preview_database_relation_and_sql(tmp_path):
+    from fsspec_browser import web
+
+    class FakeTable:
+        num_columns = 2
+
+        def __init__(self, rows):
+            self.rows = rows
+            self.num_rows = len(rows)
+
+        def slice(self, offset, length):
+            return FakeTable(self.rows[offset : offset + length])
+
+        def to_pylist(self):
+            return self.rows
+
+    class FakeDatabaseFs:
+        def info(self, path):
+            return {"name": path, "type": "directory", "kind": "view", "size": None}
+
+        def cat_file(self, path):
+            assert path == "/main/sales_by_region.jsonl?limit=3&offset=0"
+            return b'{"Region":"East","Sales":2}\n{"Region":"West","Sales":3}\n{"Region":"South","Sales":4}\n'
+
+        def query(self, sql):
+            assert sql == ("SELECT * FROM (SELECT Region, Sales FROM sales_by_region) AS __fsspec_browser_preview LIMIT 3")
+            return FakeTable([{"Region": "East", "Sales": 2}, {"Region": "West", "Sales": 3}, {"Region": "South", "Sales": 4}])
+
+        def unstrip_protocol(self, path):
+            return f"db+duckdb://{path}"
+
+    state = web.BrowserState(FakeDatabaseFs(), "/", "db+duckdb://", tmp_path, tmp_path, 1024, 256, 2)
+
+    relation = web.preview_file(state, "/main/sales_by_region")
+    query = web.preview_query(state, "SELECT Region, Sales FROM sales_by_region")
+
+    assert relation["kind"] == "table"
+    assert relation["columns"] == ["Region", "Sales"]
+    assert relation["rows"] == [{"Region": "East", "Sales": 2}, {"Region": "West", "Sales": 3}]
+    assert relation["next_offset"] == 2
+    assert relation["truncated"] is True
+    assert json.loads(relation["content"]) == [{"Region": "East", "Sales": 2}, {"Region": "West", "Sales": 3}]
+    assert query["kind"] == "table"
+    assert query["truncated"] is True
+
+    try:
+        web.preview_query(state, "DROP TABLE orders")
+    except ValueError as exc:
+        assert "SELECT or WITH" in str(exc)
+    else:
+        raise AssertionError("SQL preview should reject mutating statements")
 
 
 def test_download_target_strips_protocol(tmp_path):
