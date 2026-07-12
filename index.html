@@ -266,7 +266,7 @@
 fsspec-browser<span class="w"> </span>s3-rs://my-bucket/path<span class="w"> </span>-o<span class="w"> </span><span class="nv">endpoint_url</span><span class="o">=</span>https://...
 </pre></div>
 </div>
-<p>Use arrow keys or <code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code> to move, <code class="docutils literal notranslate"><span class="pre">Enter</span></code> to open directories, <code class="docutils literal notranslate"><span class="pre">p</span></code> to preview remote files, and <code class="docutils literal notranslate"><span class="pre">d</span></code> to download the selected file.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">Ctrl-A</span></code>, then <code class="docutils literal notranslate"><span class="pre">Left</span></code> or <code class="docutils literal notranslate"><span class="pre">Right</span></code>, to focus the browser or preview pane. Arrow keys operate on the focused pane: they navigate files in the browser and scroll vertically or horizontally in the preview. <code class="docutils literal notranslate"><span class="pre">Enter</span></code> opens directories, <code class="docutils literal notranslate"><span class="pre">p</span></code> previews remote files, and <code class="docutils literal notranslate"><span class="pre">d</span></code> downloads the selected file. <code class="docutils literal notranslate"><span class="pre">Ctrl-U</span></code>/<code class="docutils literal notranslate"><span class="pre">Ctrl-D</span></code> and <code class="docutils literal notranslate"><span class="pre">H</span></code>/<code class="docutils literal notranslate"><span class="pre">L</span></code> remain preview scrolling shortcuts. Database previews fetch another 100-row page near the end.</p>
 </section>
 <section id="web-browser">
 <h2>Web Browser<a class="headerlink" href="#web-browser" title="Link to this heading">¶</a></h2>
@@ -274,7 +274,23 @@ fsspec-browser<span class="w"> </span>s3-rs://my-bucket/path<span class="w"> </s
 fsspec-browser-web<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8765</span>
 </pre></div>
 </div>
-<p>When started without a path, the web UI opens a connection form. File previews are explicit and bounded by <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span></code>.</p>
+<p>When started without a path, the web UI opens a connection form. File previews are explicit and bounded by <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span></code>. Database relations and columns, CSV, JSON/JSONL, and Parquet render as tables. Scrolling the preview loads the next <code class="docutils literal notranslate"><span class="pre">--preview-rows</span></code> page.</p>
+<section id="browse-a-duckdb-database">
+<h3>Browse a DuckDB database<a class="headerlink" href="#browse-a-duckdb-database" title="Link to this heading">¶</a></h3>
+<p>Install the database extra and create the Superstore fixture:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;fsspec-browser[database]&#39;</span>
+python<span class="w"> </span>examples/create_superstore_duckdb.py
+</pre></div>
+</div>
+<p>Start the web browser with the DuckDB database as a storage option:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>fsspec-browser-web<span class="w"> </span>db+duckdb://<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-o<span class="w"> </span><span class="nv">database</span><span class="o">=</span>examples/superstore.duckdb<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--preview-rows<span class="w"> </span><span class="m">20</span>
+</pre></div>
+</div>
+<p>Tables and stored views remain directory-like database relations, but are explicitly
+previewable as bounded row sets. Use <strong>SQL Preview</strong> for an arbitrary read query.</p>
+</section>
 </section>
 <section id="documentation">
 <h2>Documentation<a class="headerlink" href="#documentation" title="Link to this heading">¶</a></h2>
