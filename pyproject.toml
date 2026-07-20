@@ -237,8 +237,10 @@ section-order = [
 title = "fsspec-browser"
 root = "README.md"
 pages = [
+    "docs/src/tutorial.md",
     "docs/src/terminal.md",
     "docs/src/web.md",
+    "docs/src/explanation.md",
     "docs/src/api.md",
 ]
 use-autoapi = false
