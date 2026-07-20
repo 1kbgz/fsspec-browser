@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Web" href="web.html"><link rel="prev" title="fsspec-browser" href="../../index.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Web" href="web.html"><link rel="prev" title="Preview local data in the web browser" href="tutorial.html">
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
-        <title>Terminal - fsspec-browser v0.1.3</title>
+        <title>Terminal - fsspec-browser v0.2.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
@@ -167,7 +167,7 @@
       </label>
     </div>
     <div class="header-center">
-      <a href="../../index.html"><div class="brand">fsspec-browser <code style='font-size: var(--font-size--small--4);color: var(--sd-color-primary);'>v0.1.3</code></div></a>
+      <a href="../../index.html"><div class="brand">fsspec-browser <code style='font-size: var(--font-size--small--4);color: var(--sd-color-primary);'>v0.2.0</code></div></a>
     </div>
     <div class="header-right">
       <div class="theme-toggle-container theme-toggle-header">
@@ -188,7 +188,7 @@
       
       <div class="sidebar-sticky"><a class="sidebar-brand" href="../../index.html">
   
-  <span class="sidebar-brand-text">fsspec-browser <code style='font-size: var(--font-size--small--4);color: var(--sd-color-primary);'>v0.1.3</code></span>
+  <span class="sidebar-brand-text">fsspec-browser <code style='font-size: var(--font-size--small--4);color: var(--sd-color-primary);'>v0.2.0</code></span>
   
 </a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
   <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
@@ -197,8 +197,10 @@
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Preview local data in the web browser</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Terminal</a></li>
 <li class="toctree-l1"><a class="reference internal" href="web.html">Web</a></li>
+<li class="toctree-l1"><a class="reference internal" href="explanation.html">Why browsing and previewing are separate operations</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">API</a></li>
 </ul>
 
@@ -250,7 +252,11 @@ fsspec-browser<span class="w"> </span>s3://bucket/path<span class="w"> </span>-o
 <p>Omit the path to enter backend details interactively.</p>
 <section id="supported-locations">
 <h2>Supported Locations<a class="headerlink" href="#supported-locations" title="Link to this heading">¶</a></h2>
-<p>Plain local paths and <code class="docutils literal notranslate"><span class="pre">local-rs://</span></code> URLs use the native local backend. <code class="docutils literal notranslate"><span class="pre">s3-rs://</span></code> and <code class="docutils literal notranslate"><span class="pre">s3://</span></code> URLs use the native S3 backend.</p>
+<p>Plain local paths and <code class="docutils literal notranslate"><span class="pre">local-rs://</span></code> URLs use the native local backend. <code class="docutils literal notranslate"><span class="pre">s3-rs://</span></code> and
+<code class="docutils literal notranslate"><span class="pre">s3://</span></code> URLs use the native S3 backend. Any other protocol registered in the active
+Python environment is loaded through fsspec and the <code class="docutils literal notranslate"><span class="pre">fsspec-rs</span></code> Python bridge.</p>
+<p>Install the backend package required by the URL before starting the browser. For example,
+install <code class="docutils literal notranslate"><span class="pre">fsspec-db</span></code> for <code class="docutils literal notranslate"><span class="pre">db+sqlite://</span></code> or <code class="docutils literal notranslate"><span class="pre">gcsfs</span></code> for <code class="docutils literal notranslate"><span class="pre">gs://</span></code>.</p>
 <p>Storage options are passed with repeated <code class="docutils literal notranslate"><span class="pre">-o</span></code> or <code class="docutils literal notranslate"><span class="pre">--storage-option</span></code> flags:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>fsspec-browser<span class="w"> </span>s3-rs://bucket/path<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>-o<span class="w"> </span><span class="nv">endpoint_url</span><span class="o">=</span>https://s3.example.com<span class="w"> </span><span class="se">\</span>
@@ -345,14 +351,14 @@ fsspec-browser<span class="w"> </span>s3://bucket/path<span class="w"> </span>-o
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../../index.html">
+          <a class="prev-page" href="tutorial.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Home</div>
+                <div class="title">Preview local data in the web browser</div>
                 
               </div>
             </a>
@@ -402,7 +408,7 @@ fsspec-browser<span class="w"> </span>s3://bucket/path<span class="w"> </span>-o
       
     </aside>
   </div>
-</div><script src="../../_static/documentation_options.js?v=360bc84d"></script>
+</div><script src="../../_static/documentation_options.js?v=938c9ccc"></script>
     <script src="../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/scripts/furo.js?v=46bd48cc"></script>

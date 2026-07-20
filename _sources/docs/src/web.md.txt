@@ -43,13 +43,21 @@ Use `Refresh` to reload the selected directory level. Use `Download` to copy the
 | `--host`                           | `127.0.0.1` | Server host                                |
 | `--port`                           | `0`         | Server port; `0` chooses an available port |
 | `--page-size`                      | `256`       | Entries revealed per directory page        |
-| `--preview-bytes`                  | `1048576` | Maximum bytes read for file preview        |
+| `--preview-bytes`                  | `1048576`   | Maximum bytes read for file preview        |
+| `--preview-rows`                   | `20`        | Rows returned per structured preview page  |
 | `--download-root`                  | `.`         | Directory where downloads are written      |
 | `--no-open`                        | off         | Do not open a browser tab                  |
 
 ## Previews
 
-The server reads at most `--preview-bytes + 1` bytes so it can mark truncated previews. Binary files are identified without rendering bytes as text. Complete `.json` previews are pretty-printed when valid.
+The server reads at most `--preview-bytes + 1` bytes so it can mark truncated previews.
+Binary files are identified without rendering bytes as text. Complete `.json` previews
+are pretty-printed when valid. CSV, JSON/JSONL, Parquet, and database relation previews
+render as tables. Scrolling near the end of a table requests another `--preview-rows`
+page.
+
+When the active filesystem provides `query()`, the UI also offers SQL Preview. It accepts
+`SELECT` and `WITH` statements and wraps them in a row-limited outer query.
 
 Metadata shown in the UI comes from fsspec listings and file info, including common created, modified, accessed, ETag, and content type fields when the backend provides them.
 
