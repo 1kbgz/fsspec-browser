@@ -27,11 +27,6 @@
   },
   "scripts": {
     "build:debug": "node build.mjs --debug",
-<<<<<<< before updating
-=======
-    "build:rust": "cargo build --release --all-features --target wasm32-unknown-unknown --target-dir ../target",
-    "build:wasm-bindgen": "wasm-bindgen ../target/wasm32-unknown-unknown/release/fsspec_browser.wasm --out-dir ./dist/pkg --target web",
->>>>>>> after updating
     "build:prod": "node build.mjs",
     "build": "pnpm run build:prod",
     "clean": "rm -rf dist lib playwright-report ../fsspec_browser/extension",
