@@ -13,7 +13,12 @@ Omit the path to enter backend details interactively.
 
 ## Supported Locations
 
-Plain local paths and `local-rs://` URLs use the native local backend. `s3-rs://` and `s3://` URLs use the native S3 backend.
+Plain local paths and `local-rs://` URLs use the native local backend. `s3-rs://` and
+`s3://` URLs use the native S3 backend. Any other protocol registered in the active
+Python environment is loaded through fsspec and the `fsspec-rs` Python bridge.
+
+Install the backend package required by the URL before starting the browser. For example,
+install `fsspec-db` for `db+sqlite://` or `gcsfs` for `gs://`.
 
 Storage options are passed with repeated `-o` or `--storage-option` flags:
 

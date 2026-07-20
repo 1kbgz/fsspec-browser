@@ -63,4 +63,7 @@ previewable as bounded row sets. Use **SQL Preview** for an arbitrary read query
 
 ## Documentation
 
-See the full docs for terminal usage, web usage, and Python API reference.
+- [Preview local data](docs/src/tutorial.md): guided first use.
+- [Use the terminal](docs/src/terminal.md) or [web browser](docs/src/web.md): task-oriented guides.
+- [Understand browsing and previews](docs/src/explanation.md): design and backend boundaries.
+- [Python API reference](docs/src/api.md): embedding and server helpers.
