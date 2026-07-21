@@ -30,7 +30,7 @@ fsspec-browser /tmp
 fsspec-browser s3-rs://my-bucket/path -o endpoint_url=https://...
 ```
 
-Use `Ctrl-A`, then `Left` or `Right`, to focus the browser or preview pane. Arrow keys operate on the focused pane: they navigate files in the browser and scroll vertically or horizontally in the preview. `Enter` opens directories, `p` previews remote files, and `d` downloads the selected file. `Ctrl-U`/`Ctrl-D` and `H`/`L` remain preview scrolling shortcuts. Database previews fetch another 100-row page near the end.
+Use `Ctrl-A`, then `Left` or `Right`, to focus the browser or preview pane. Arrow keys operate on the focused pane: they navigate files in the browser and scroll vertically or horizontally in the preview. `Enter` opens directories, `p` previews remote files, and `d` downloads the selected file. `Ctrl-U`/`Ctrl-D` and `H`/`L` remain preview scrolling shortcuts. Arrow IPC and Parquet render as tables through `fsspec-data`; scrolling near the end loads another `--preview-rows` page.
 
 ## Web Browser
 

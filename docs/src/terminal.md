@@ -53,10 +53,17 @@ Useful S3 option names include `endpoint_url`, `region`, `key`, `access_key_id`,
 
 Local files can be previewed as you browse. Remote files require `p` before bytes are read, so selecting an object does not automatically download data.
 
-Preview reads are bounded by `--preview-bytes`; default is 100 MiB. JSON previews are pretty-printed when the complete preview is valid JSON. Truncated JSON stays raw.
+Raw and text preview reads are bounded by `--preview-bytes`; default is 100 MiB. JSON
+previews are pretty-printed when the complete preview is valid JSON. Truncated JSON stays
+raw.
+
+Arrow IPC (`.arrow` and `.ipc`) and Parquet (`.parquet` and `.pq`) previews render as tables.
+Their decoding uses `fsspec-data` with explicit row and decoded Arrow-memory bounds. Change
+the number of rows per page with `--preview-rows`; scrolling near the end loads the next
+page.
 
 ```bash
-fsspec-browser /tmp --preview-bytes 1048576
+fsspec-browser /tmp --preview-bytes 1048576 --preview-rows 20
 ```
 
 ## Paging And Downloads
