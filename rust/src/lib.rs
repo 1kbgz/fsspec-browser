@@ -4,7 +4,7 @@ mod terminal_browser;
 #[cfg(feature = "browser")]
 pub use terminal_browser::{
     run_browser, run_browser_from_env, run_browser_with_fallback, BackendResult, BrowserBackend,
-    ListPage, PreviewPage, SessionDetails,
+    ListPage, PreviewContinuation, PreviewPage, SessionDetails,
 };
 
 #[cfg(test)]

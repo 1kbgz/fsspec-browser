@@ -17,7 +17,7 @@ from datetime import date, datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence, TypedDict
 from urllib.parse import parse_qs, unquote, urlparse
 
 import fsspec
@@ -38,6 +38,26 @@ _METADATA_KEYS = (
     ("ContentType", "content type"),
 )
 _TIMESTAMP_KEYS = {"atime", "created", "ctime", "modified", "mtime"}
+
+
+class PreviewContinuation(TypedDict):
+    kind: Literal["offset"]
+    value: int
+
+
+class PreviewPage(TypedDict):
+    columns: list[str]
+    content: str
+    continuation: PreviewContinuation | None
+    display_path: str
+    kind: Literal["binary", "json", "table", "text"]
+    limit: int | None
+    metadata: dict[str, str]
+    offset: int
+    path: str
+    rows: list[dict[str, Any]]
+    size: int | None
+    truncated: bool
 
 
 @dataclass
@@ -189,6 +209,38 @@ def _is_json_path(display_path: str) -> bool:
     return display_path.lower().endswith(".json")
 
 
+def _preview_payload(
+    state: BrowserState,
+    path: str,
+    info: dict[str, Any],
+    *,
+    kind: Literal["binary", "json", "table", "text"],
+    content: str,
+    columns: list[str] | None = None,
+    rows: list[dict[str, Any]] | None = None,
+    offset: int = 0,
+    limit: int | None = None,
+    continuation: PreviewContinuation | None = None,
+    metadata: dict[str, str] | None = None,
+    truncated: bool = False,
+    display_path: str | None = None,
+) -> PreviewPage:
+    return {
+        "path": path,
+        "display_path": display_path or _display_path(state.fs, path),
+        "size": info.get("size"),
+        "kind": kind,
+        "content": content,
+        "columns": columns or [],
+        "rows": rows or [],
+        "offset": offset,
+        "limit": limit,
+        "continuation": continuation,
+        "metadata": {**_metadata(info), **(metadata or {})},
+        "truncated": truncated,
+    }
+
+
 def _table_payload(
     state: BrowserState,
     path: str,
@@ -196,36 +248,39 @@ def _table_payload(
     rows: list[dict[str, Any]],
     offset: int,
     *,
-    kind: str = "table",
-) -> dict[str, Any]:
+    allow_continuation: bool = True,
+    display_path: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> PreviewPage:
     has_more = len(rows) > state.preview_rows
     rows = rows[: state.preview_rows]
     columns = list(rows[0]) if rows else []
-    return {
-        "path": path,
-        "display_path": _display_path(state.fs, path),
-        "size": info.get("size"),
-        "kind": kind,
-        "content": json.dumps(rows, indent=2, default=str),
-        "columns": columns,
-        "rows": rows,
-        "offset": offset,
-        "limit": state.preview_rows,
-        "has_more": has_more,
-        "next_offset": offset + len(rows) if has_more else None,
-        "metadata": {**_metadata(info), "rows": str(len(rows))},
-        "truncated": has_more,
-    }
+    continuation = PreviewContinuation(kind="offset", value=offset + len(rows)) if has_more and allow_continuation else None
+    return _preview_payload(
+        state,
+        path,
+        info,
+        kind="table",
+        content=json.dumps(rows, indent=2, default=str),
+        columns=columns,
+        rows=rows,
+        offset=offset,
+        limit=state.preview_rows,
+        continuation=continuation,
+        metadata={"rows": str(len(rows)), **(metadata or {})},
+        truncated=has_more,
+        display_path=display_path,
+    )
 
 
-def _preview_delimited(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> dict[str, Any]:
+def _preview_delimited(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> PreviewPage:
     with state.fs.open(path, "rt", newline="") as file:
         reader = csv.DictReader(file)
         rows = list(itertools.islice(reader, offset, offset + state.preview_rows + 1))
     return _table_payload(state, path, info, rows, offset)
 
 
-def _preview_jsonl(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> dict[str, Any]:
+def _preview_jsonl(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> PreviewPage:
     with state.fs.open(path, "rt") as file:
         lines = itertools.islice(file, offset, offset + state.preview_rows + 1)
         rows = [json.loads(line) for line in lines if line.strip()]
@@ -234,7 +289,7 @@ def _preview_jsonl(state: BrowserState, path: str, info: dict[str, Any], offset:
     return _table_payload(state, path, info, rows, offset)
 
 
-def _preview_parquet(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> dict[str, Any]:
+def _preview_parquet(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> PreviewPage:
     import pyarrow.parquet as pq
 
     wanted = state.preview_rows + 1
@@ -255,7 +310,7 @@ def _preview_parquet(state: BrowserState, path: str, info: dict[str, Any], offse
     return _table_payload(state, path, info, rows, offset)
 
 
-def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None, offset: int = 0) -> dict[str, Any]:
+def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None, offset: int = 0) -> PreviewPage:
     info = state.fs.info(path)
     if _is_directory(info):
         if info.get("kind") in {"table", "view"}:
@@ -283,15 +338,15 @@ def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None
     data = data[:max_bytes]
 
     if b"\x00" in data:
-        return {
-            "path": path,
-            "display_path": display_path,
-            "size": info.get("size"),
-            "kind": "binary",
-            "content": "",
-            "metadata": _metadata(info),
-            "truncated": truncated,
-        }
+        return _preview_payload(
+            state,
+            path,
+            info,
+            kind="binary",
+            content="",
+            truncated=truncated,
+            display_path=display_path,
+        )
 
     try:
         content = data.decode("utf-8")
@@ -318,18 +373,18 @@ def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None
         except json.JSONDecodeError:
             pass
 
-    return {
-        "path": path,
-        "display_path": display_path,
-        "size": info.get("size"),
-        "kind": kind,
-        "content": content,
-        "metadata": _metadata(info),
-        "truncated": truncated,
-    }
+    return _preview_payload(
+        state,
+        path,
+        info,
+        kind=kind,
+        content=content,
+        truncated=truncated,
+        display_path=display_path,
+    )
 
 
-def preview_query(state: BrowserState, sql: str) -> dict[str, Any]:
+def preview_query(state: BrowserState, sql: str) -> PreviewPage:
     sql = sql.strip().removesuffix(";")
     if not sql:
         raise ValueError("SQL query is empty")
@@ -340,20 +395,20 @@ def preview_query(state: BrowserState, sql: str) -> dict[str, Any]:
         raise TypeError("active filesystem does not support SQL queries")
     bounded_sql = f"SELECT * FROM ({sql}) AS __fsspec_browser_preview LIMIT {state.preview_rows + 1}"
     table = query(bounded_sql)
-    truncated = table.num_rows > state.preview_rows
-    rows = table.slice(0, state.preview_rows).to_pylist()
-    return {
-        "path": "",
-        "display_path": "SQL query",
-        "size": None,
-        "kind": "table",
-        "content": json.dumps(rows, indent=2, default=str),
-        "metadata": {"rows": str(len(rows)), "columns": str(table.num_columns)},
-        "truncated": truncated,
-    }
+    rows = table.to_pylist()
+    return _table_payload(
+        state,
+        "",
+        {"size": None},
+        rows,
+        0,
+        allow_continuation=False,
+        display_path="SQL query",
+        metadata={"columns": str(table.num_columns)},
+    )
 
 
-def _preview_relation(state: BrowserState, path: str, info: dict[str, Any], offset: int = 0) -> dict[str, Any]:
+def _preview_relation(state: BrowserState, path: str, info: dict[str, Any], offset: int = 0) -> PreviewPage:
     clean_path = path.rstrip("/")
     data = state.fs.cat_file(f"{clean_path}.jsonl?limit={state.preview_rows + 1}&offset={offset}")
     rows = [json.loads(line) for line in data.decode("utf-8").splitlines() if line]

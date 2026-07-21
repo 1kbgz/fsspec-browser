@@ -207,10 +207,15 @@ pub struct ListPage {
 }
 
 #[derive(Clone, Debug)]
+pub enum PreviewContinuation {
+    Offset(usize),
+    Token(String),
+}
+
+#[derive(Clone, Debug)]
 pub struct PreviewPage {
     pub bytes: Vec<u8>,
-    pub has_more: bool,
-    pub next_offset: usize,
+    pub continuation: Option<PreviewContinuation>,
 }
 
 pub trait BrowserBackend: Send {
@@ -223,7 +228,12 @@ pub trait BrowserBackend: Send {
     }
     fn list_page(&self, path: &str, offset: usize, limit: usize) -> FsResult<ListPage>;
     fn parent(&self, path: &str) -> String;
-    fn preview(&self, path: &str, offset: usize, limit: usize) -> FsResult<PreviewPage>;
+    fn preview(
+        &self,
+        path: &str,
+        continuation: Option<&PreviewContinuation>,
+        limit: usize,
+    ) -> FsResult<PreviewPage>;
     fn download(&self, path: &str, local: &Path) -> FsResult<()>;
     fn display_path(&self, path: &str) -> String;
 }
@@ -306,7 +316,21 @@ impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
         }
     }
 
-    fn preview(&self, path: &str, offset: usize, limit: usize) -> FsResult<PreviewPage> {
+    fn preview(
+        &self,
+        path: &str,
+        continuation: Option<&PreviewContinuation>,
+        limit: usize,
+    ) -> FsResult<PreviewPage> {
+        let offset = match continuation {
+            None => 0,
+            Some(PreviewContinuation::Offset(offset)) => *offset,
+            Some(PreviewContinuation::Token(_)) => {
+                return Err(FsError::InvalidArgument(
+                    "this backend does not support token preview continuations".into(),
+                ));
+            }
+        };
         let bytes = self
             .fs
             .cat_file(path, Some(offset as i64), Some((offset + limit) as i64))?;
@@ -314,8 +338,7 @@ impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
         let next_offset = offset + bytes.len();
         Ok(PreviewPage {
             bytes,
-            has_more,
-            next_offset,
+            continuation: has_more.then_some(PreviewContinuation::Offset(next_offset)),
         })
     }
 
@@ -555,7 +578,7 @@ enum PendingKind {
     Preview {
         path: String,
         size: u64,
-        offset: usize,
+        initial: bool,
     },
     Download {
         display_path: String,
@@ -602,8 +625,7 @@ struct BrowserApp {
 
 struct PreviewCache {
     lines: Vec<String>,
-    next_offset: usize,
-    has_more: bool,
+    continuation: Option<PreviewContinuation>,
 }
 
 impl BrowserApp {
@@ -692,42 +714,44 @@ impl BrowserApp {
                     self.rebuild_rows();
                 }
             },
-            (PendingKind::Preview { path, size, offset }, JobResult::Preview(result)) => {
-                match result {
-                    Ok(page) => {
-                        let lines = bytes_to_preview_lines(
-                            &page.bytes,
-                            !page.has_more && offset == 0 && size > page.bytes.len() as u64,
-                        );
-                        if offset == 0 {
-                            self.preview_cache.insert(
-                                path.clone(),
-                                PreviewCache {
-                                    lines,
-                                    next_offset: page.next_offset,
-                                    has_more: page.has_more,
-                                },
-                            );
-                        } else if let Some(cached) = self.preview_cache.get_mut(&path) {
-                            cached.lines.extend(lines);
-                            cached.next_offset = page.next_offset;
-                            cached.has_more = page.has_more;
-                        }
-                        self.message = format!("preview loaded for {}", self.display_path(&path));
-                    }
-                    Err(err) => {
+            (
+                PendingKind::Preview {
+                    path,
+                    size,
+                    initial,
+                },
+                JobResult::Preview(result),
+            ) => match result {
+                Ok(page) => {
+                    let lines = bytes_to_preview_lines(
+                        &page.bytes,
+                        page.continuation.is_none() && initial && size > page.bytes.len() as u64,
+                    );
+                    if initial {
                         self.preview_cache.insert(
                             path.clone(),
                             PreviewCache {
-                                lines: vec![format!("preview error: {err}")],
-                                next_offset: 0,
-                                has_more: false,
+                                lines,
+                                continuation: page.continuation,
                             },
                         );
-                        self.message = format!("preview error: {err}");
+                    } else if let Some(cached) = self.preview_cache.get_mut(&path) {
+                        cached.lines.extend(lines);
+                        cached.continuation = page.continuation;
                     }
+                    self.message = format!("preview loaded for {}", self.display_path(&path));
                 }
-            }
+                Err(err) => {
+                    self.preview_cache.insert(
+                        path.clone(),
+                        PreviewCache {
+                            lines: vec![format!("preview error: {err}")],
+                            continuation: None,
+                        },
+                    );
+                    self.message = format!("preview error: {err}");
+                }
+            },
             (
                 PendingKind::Download {
                     display_path,
@@ -810,10 +834,16 @@ impl BrowserApp {
         });
     }
 
-    fn start_preview(&mut self, path: String, size: u64, offset: usize) {
+    fn start_preview(
+        &mut self,
+        path: String,
+        size: u64,
+        continuation: Option<PreviewContinuation>,
+    ) {
         let backend = Arc::clone(&self.backend);
         let preview_bytes = self.preview_bytes;
         let worker_path = path.clone();
+        let worker_continuation = continuation.clone();
         let (sender, receiver) = mpsc::channel();
         thread::spawn(move || {
             let result = backend
@@ -821,13 +851,17 @@ impl BrowserApp {
                 .map_err(|err| err.to_string())
                 .and_then(|backend| {
                     backend
-                        .preview(&worker_path, offset, preview_bytes)
+                        .preview(&worker_path, worker_continuation.as_ref(), preview_bytes)
                         .map_err(|err| err.to_string())
                 });
             let _ = sender.send(JobResult::Preview(result));
         });
         self.pending = Some(PendingJob {
-            kind: PendingKind::Preview { path, size, offset },
+            kind: PendingKind::Preview {
+                path,
+                size,
+                initial: continuation.is_none(),
+            },
             receiver,
         });
     }
@@ -1045,7 +1079,7 @@ impl BrowserApp {
         self.preview_scroll = 0;
         self.preview_horizontal = 0;
         self.active_preview_path = Some(path.clone());
-        self.start_preview(path, size, 0);
+        self.start_preview(path, size, None);
     }
 
     fn scroll_preview(&mut self, delta: i16) {
@@ -1057,11 +1091,11 @@ impl BrowserApp {
         };
         let path = node.info.name.clone();
         let size = node.info.size;
-        let (line_count, has_more, next_offset) = self
+        let (line_count, continuation) = self
             .preview_cache
             .get(&path)
-            .map(|cache| (cache.lines.len(), cache.has_more, cache.next_offset))
-            .unwrap_or((0, false, 0));
+            .map(|cache| (cache.lines.len(), cache.continuation.clone()))
+            .unwrap_or((0, None));
         if line_count == 0 {
             return;
         }
@@ -1072,11 +1106,11 @@ impl BrowserApp {
                 .saturating_add(delta as u16)
                 .min(line_count.saturating_sub(1) as u16)
         };
-        if has_more
+        if continuation.is_some()
             && self.preview_scroll as usize + 20 >= line_count
             && !self.is_preview_pending(&path)
         {
-            self.start_preview(path, size, next_offset);
+            self.start_preview(path, size, continuation);
         }
     }
 
@@ -1225,7 +1259,7 @@ impl BrowserApp {
             return cached.lines.clone();
         }
         if self.auto_preview() {
-            self.start_preview(path.clone(), size, 0);
+            self.start_preview(path.clone(), size, None);
             return vec![format!("reading preview for {}", self.display_path(&path))];
         }
         vec!["press p to read preview bytes".to_string()]
@@ -1817,12 +1851,16 @@ mod tests {
             parent_path(path)
         }
 
-        fn preview(&self, _path: &str, offset: usize, _limit: usize) -> FsResult<PreviewPage> {
+        fn preview(
+            &self,
+            _path: &str,
+            continuation: Option<&PreviewContinuation>,
+            _limit: usize,
+        ) -> FsResult<PreviewPage> {
             self.preview_calls.lock().unwrap().push(_path.to_string());
             Ok(PreviewPage {
                 bytes: Vec::new(),
-                has_more: false,
-                next_offset: offset,
+                continuation: continuation.cloned(),
             })
         }
 
@@ -2101,6 +2139,33 @@ mod tests {
             preview_call_log(&preview_calls).as_slice(),
             &["/root/file.txt".to_string()]
         );
+    }
+
+    #[test]
+    fn preview_forwards_opaque_continuation() {
+        let mut pages = HashMap::new();
+        pages.insert(("/root".to_string(), 0), page(Vec::new(), false));
+        let (mut app, _calls, _) = mock_app(pages);
+        let path = "/root/file.txt".to_string();
+        app.preview_cache.insert(
+            path.clone(),
+            PreviewCache {
+                lines: vec!["first page".to_string()],
+                continuation: None,
+            },
+        );
+
+        app.start_preview(
+            path.clone(),
+            4,
+            Some(PreviewContinuation::Token("cursor-2".to_string())),
+        );
+        settle(&mut app);
+
+        assert!(matches!(
+            app.preview_cache.get(&path).unwrap().continuation.as_ref(),
+            Some(PreviewContinuation::Token(value)) if value == "cursor-2"
+        ));
     }
 
     #[test]
