@@ -14,7 +14,7 @@ authors = [
 description = "terminal and web browser for fsspec backends"
 readme = "README.md"
 license = { text = "Apache-2.0" }
-version = "0.2.0"
+version = "0.2.1"
 requires-python = ">=3.10"
 keywords = []
 
@@ -70,7 +70,7 @@ Repository = "https://github.com/1kbgz/fsspec-browser"
 Homepage = "https://github.com/1kbgz/fsspec-browser"
 
 [tool.bumpversion]
-current_version = "0.2.0"
+current_version = "0.2.1"
 commit = true
 tag = false 
 commit_args = "-s"
