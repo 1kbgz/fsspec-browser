@@ -50,11 +50,12 @@ Use `Refresh` to reload the selected directory level. Use `Download` to copy the
 
 ## Previews
 
-The server reads at most `--preview-bytes + 1` bytes so it can mark truncated previews.
-Binary files are identified without rendering bytes as text. Complete `.json` previews
-are pretty-printed when valid. CSV, JSON/JSONL, Parquet, and database relation previews
-render as tables. Scrolling near the end of a table requests another `--preview-rows`
-page.
+Raw and text previews read at most `--preview-bytes + 1` bytes so they can be marked as
+truncated. Binary files are identified without rendering bytes as text. Complete `.json`
+previews are pretty-printed when valid. CSV, JSON/JSONL, Arrow IPC (`.arrow` and `.ipc`),
+Parquet, and database relation previews render as tables. Arrow IPC and Parquet decoding
+uses `fsspec-data` with explicit row and decoded Arrow-memory bounds. Scrolling near the
+end of a table requests another `--preview-rows` page.
 
 When the active filesystem provides `query()`, the UI also offers SQL Preview. It accepts
 `SELECT` and `WITH` statements and wraps them in a row-limited outer query.

@@ -321,11 +321,12 @@ fsspec-browser-web<span class="w"> </span>s3://bucket/path<span class="w"> </spa
 </section>
 <section id="previews">
 <h2>Previews<a class="headerlink" href="#previews" title="Link to this heading">¶</a></h2>
-<p>The server reads at most <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span> <span class="pre">+</span> <span class="pre">1</span></code> bytes so it can mark truncated previews.
-Binary files are identified without rendering bytes as text. Complete <code class="docutils literal notranslate"><span class="pre">.json</span></code> previews
-are pretty-printed when valid. CSV, JSON/JSONL, Parquet, and database relation previews
-render as tables. Scrolling near the end of a table requests another <code class="docutils literal notranslate"><span class="pre">--preview-rows</span></code>
-page.</p>
+<p>Raw and text previews read at most <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span> <span class="pre">+</span> <span class="pre">1</span></code> bytes so they can be marked as
+truncated. Binary files are identified without rendering bytes as text. Complete <code class="docutils literal notranslate"><span class="pre">.json</span></code>
+previews are pretty-printed when valid. CSV, JSON/JSONL, Arrow IPC (<code class="docutils literal notranslate"><span class="pre">.arrow</span></code> and <code class="docutils literal notranslate"><span class="pre">.ipc</span></code>),
+Parquet, and database relation previews render as tables. Arrow IPC and Parquet decoding
+uses <code class="docutils literal notranslate"><span class="pre">fsspec-data</span></code> with explicit row and decoded Arrow-memory bounds. Scrolling near the
+end of a table requests another <code class="docutils literal notranslate"><span class="pre">--preview-rows</span></code> page.</p>
 <p>When the active filesystem provides <code class="docutils literal notranslate"><span class="pre">query()</span></code>, the UI also offers SQL Preview. It accepts
 <code class="docutils literal notranslate"><span class="pre">SELECT</span></code> and <code class="docutils literal notranslate"><span class="pre">WITH</span></code> statements and wraps them in a row-limited outer query.</p>
 <p>Metadata shown in the UI comes from fsspec listings and file info, including common created, modified, accessed, ETag, and content type fields when the backend provides them.</p>
