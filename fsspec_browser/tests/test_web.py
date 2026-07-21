@@ -285,6 +285,25 @@ def test_preview_file_formats_json(tmp_path):
 
     assert preview["kind"] == "json"
     assert preview["content"] == '{\n  "a": 2,\n  "b": 1\n}'
+    assert preview["columns"] == []
+    assert preview["rows"] == []
+    assert preview["continuation"] is None
+    assert preview["offset"] == 0
+    assert preview["limit"] is None
+    assert set(preview) == {
+        "columns",
+        "content",
+        "continuation",
+        "display_path",
+        "kind",
+        "limit",
+        "metadata",
+        "offset",
+        "path",
+        "rows",
+        "size",
+        "truncated",
+    }
 
 
 def test_preview_file_does_not_format_truncated_json(tmp_path):
@@ -314,9 +333,9 @@ def test_preview_tabular_files_are_paged(tmp_path):
     jsonl_page = web.preview_file(state, str(jsonl_path), offset=2)
 
     assert csv_page["rows"] == [{"name": "ada", "score": "2"}, {"name": "grace", "score": "3"}]
-    assert csv_page["next_offset"] == 2
+    assert csv_page["continuation"] == {"kind": "offset", "value": 2}
     assert jsonl_page["rows"] == [{"name": "lin", "score": 4}]
-    assert jsonl_page["has_more"] is False
+    assert jsonl_page["continuation"] is None
 
 
 def test_preview_parquet_is_paged(tmp_path):
@@ -332,7 +351,7 @@ def test_preview_parquet_is_paged(tmp_path):
 
     assert preview["columns"] == ["name", "score"]
     assert preview["rows"] == [{"name": "ada", "score": 2}, {"name": "grace", "score": 3}]
-    assert preview["has_more"] is True
+    assert preview["continuation"] == {"kind": "offset", "value": 2}
 
 
 def test_preview_database_relation_and_sql(tmp_path):
@@ -374,10 +393,13 @@ def test_preview_database_relation_and_sql(tmp_path):
     assert relation["kind"] == "table"
     assert relation["columns"] == ["Region", "Sales"]
     assert relation["rows"] == [{"Region": "East", "Sales": 2}, {"Region": "West", "Sales": 3}]
-    assert relation["next_offset"] == 2
+    assert relation["continuation"] == {"kind": "offset", "value": 2}
     assert relation["truncated"] is True
     assert json.loads(relation["content"]) == [{"Region": "East", "Sales": 2}, {"Region": "West", "Sales": 3}]
     assert query["kind"] == "table"
+    assert query["columns"] == ["Region", "Sales"]
+    assert query["rows"] == [{"Region": "East", "Sales": 2}, {"Region": "West", "Sales": 3}]
+    assert query["continuation"] is None
     assert query["truncated"] is True
 
     try:

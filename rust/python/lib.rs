@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use fsspec_browser_core::{BackendResult, BrowserBackend, ListPage, PreviewPage, SessionDetails};
+use fsspec_browser_core::{
+    BackendResult, BrowserBackend, ListPage, PreviewContinuation, PreviewPage, SessionDetails,
+};
 use fsspec_rs::{FileSystem, FileType, FsError, FsResult};
 use fsspec_rs_bridge::{url_to_fs, PyFsspecFs};
 use pyo3::prelude::*;
@@ -71,7 +73,21 @@ impl BrowserBackend for PythonBackend {
                 ))
     }
 
-    fn preview(&self, path: &str, offset: usize, limit: usize) -> FsResult<PreviewPage> {
+    fn preview(
+        &self,
+        path: &str,
+        continuation: Option<&PreviewContinuation>,
+        limit: usize,
+    ) -> FsResult<PreviewPage> {
+        let offset = match continuation {
+            None => 0,
+            Some(PreviewContinuation::Offset(offset)) => *offset,
+            Some(PreviewContinuation::Token(_)) => {
+                return Err(FsError::InvalidArgument(
+                    "this backend does not support token preview continuations".into(),
+                ));
+            }
+        };
         let info = self.fs.info(path)?;
         let kind = info.extra.get("kind").map(String::as_str);
         if self.database && matches!(kind, Some("table" | "view")) {
@@ -92,8 +108,7 @@ impl BrowserBackend for PythonBackend {
         let next_offset = offset + bytes.len();
         Ok(PreviewPage {
             bytes,
-            has_more,
-            next_offset,
+            continuation: has_more.then_some(PreviewContinuation::Offset(next_offset)),
         })
     }
 
@@ -122,8 +137,7 @@ fn jsonl_page(data: Vec<u8>, offset: usize) -> FsResult<PreviewPage> {
     let next_offset = offset + rows.len();
     Ok(PreviewPage {
         bytes: format!("[\n{}\n]", rows.join(",\n")).into_bytes(),
-        has_more,
-        next_offset,
+        continuation: has_more.then_some(PreviewContinuation::Offset(next_offset)),
     })
 }
 
@@ -135,8 +149,7 @@ fn json_array_page(data: Vec<u8>, offset: usize) -> FsResult<PreviewPage> {
     let next_offset = offset + values.len();
     Ok(PreviewPage {
         bytes: serde_json::to_vec(&values).map_err(|err| FsError::Other(err.to_string()))?,
-        has_more,
-        next_offset,
+        continuation: has_more.then_some(PreviewContinuation::Offset(next_offset)),
     })
 }
 

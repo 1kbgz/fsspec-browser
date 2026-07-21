@@ -18,16 +18,22 @@ type ApiList = {
   path: string;
 };
 
+type ApiPreviewContinuation = {
+  kind: "offset";
+  value: number;
+};
+
 type ApiPreview = {
-  columns?: string[];
+  columns: string[];
   content: string;
+  continuation: ApiPreviewContinuation | null;
   display_path: string;
-  has_more?: boolean;
   kind: "binary" | "json" | "table" | "text";
+  limit: number | null;
   metadata: Record<string, string>;
-  next_offset?: number | null;
+  offset: number;
   path: string;
-  rows?: Record<string, unknown>[];
+  rows: Record<string, unknown>[];
   size: number | null;
   truncated: boolean;
 };
@@ -295,7 +301,7 @@ const renderTablePreview = (title: string, preview: ApiPreview) => {
   previewBody.replaceChildren();
   const table = document.createElement("table");
   table.className = "preview-table";
-  const columns = preview.columns || [];
+  const columns = preview.columns;
   const head = table.createTHead().insertRow();
   for (const column of columns) {
     const cell = document.createElement("th");
@@ -303,7 +309,7 @@ const renderTablePreview = (title: string, preview: ApiPreview) => {
     head.append(cell);
   }
   const body = table.createTBody();
-  for (const row of preview.rows || []) {
+  for (const row of preview.rows) {
     const tableRow = body.insertRow();
     for (const column of columns) {
       const value = row[column];
@@ -614,22 +620,17 @@ const previewItem = async (treePath: string) => {
 };
 
 const loadMorePreview = async () => {
-  if (
-    previewLoadingMore ||
-    !activePreview?.has_more ||
-    activePreview.next_offset == null
-  )
-    return;
+  if (previewLoadingMore || !activePreview?.continuation) return;
   const item = itemByTreePath.get(currentSelection);
   if (!item) return;
   previewLoadingMore = true;
   try {
     const page = await fetchJson<ApiPreview>(
-      `api/preview?${queryPath(item.path)}&offset=${activePreview.next_offset}`,
+      `api/preview?${queryPath(item.path)}&offset=${activePreview.continuation.value}`,
     );
     activePreview = {
       ...page,
-      rows: [...(activePreview.rows || []), ...(page.rows || [])],
+      rows: [...activePreview.rows, ...page.rows],
     };
     renderTablePreview(item.name, activePreview);
   } finally {
