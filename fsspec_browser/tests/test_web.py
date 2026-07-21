@@ -338,20 +338,55 @@ def test_preview_tabular_files_are_paged(tmp_path):
     assert jsonl_page["continuation"] is None
 
 
-def test_preview_parquet_is_paged(tmp_path):
-    pa = pytest.importorskip("pyarrow")
-    pq = pytest.importorskip("pyarrow.parquet")
+@pytest.mark.parametrize("format", ["arrow", "parquet"])
+def test_preview_embedded_schema_formats_use_fsspec_data(tmp_path, monkeypatch, format):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
     from fsspec_browser import web
 
-    path = tmp_path / "data.parquet"
-    pq.write_table(pa.table({"name": ["ada", "grace", "lin"], "score": [2, 3, 4]}), path)
-    state = web.create_state(str(tmp_path), static_dir=tmp_path, download_root=tmp_path, preview_rows=2)
+    table = pa.table({"name": ["ada", "grace", "lin"], "score": [2, 3, 4]})
+    path = tmp_path / f"data.{format}"
+    if format == "arrow":
+        with path.open("wb") as file, pa.ipc.new_stream(file, table.schema) as writer:
+            writer.write_table(table)
+    else:
+        pq.write_table(table, path)
+
+    calls = []
+    get_codec = web.DEFAULT_REGISTRY.get
+
+    class RecordingCodec:
+        def __init__(self, codec):
+            self.codec = codec
+
+        def iter_batches(self, source, **kwargs):
+            calls.append((source, kwargs))
+            return self.codec.iter_batches(source, **kwargs)
+
+    monkeypatch.setattr(web.DEFAULT_REGISTRY, "get", lambda data_format: RecordingCodec(get_codec(data_format)))
+    state = web.create_state(
+        str(tmp_path),
+        static_dir=tmp_path,
+        download_root=tmp_path,
+        preview_bytes=1024 * 1024,
+        preview_rows=2,
+    )
 
     preview = web.preview_file(state, str(path))
+    continuation = preview["continuation"]
+    assert continuation is not None
+    next_preview = web.preview_file(state, str(path), offset=continuation["value"])
 
     assert preview["columns"] == ["name", "score"]
     assert preview["rows"] == [{"name": "ada", "score": 2}, {"name": "grace", "score": 3}]
     assert preview["continuation"] == {"kind": "offset", "value": 2}
+    assert next_preview["rows"] == [{"name": "lin", "score": 4}]
+    assert next_preview["continuation"] is None
+    assert len(calls) == 2
+    assert hasattr(calls[0][0], "read")
+    assert calls[0][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 3}
+    assert calls[1][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 5}
 
 
 def test_preview_database_relation_and_sql(tmp_path):

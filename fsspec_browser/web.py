@@ -21,6 +21,7 @@ from typing import Any, Literal, Sequence, TypedDict
 from urllib.parse import parse_qs, unquote, urlparse
 
 import fsspec
+from fsspec_data import DEFAULT_REGISTRY, DataFormat
 
 MAX_PREVIEW_BYTES = 1 * 1024 * 1024
 _METADATA_KEYS = (
@@ -289,15 +290,24 @@ def _preview_jsonl(state: BrowserState, path: str, info: dict[str, Any], offset:
     return _table_payload(state, path, info, rows, offset)
 
 
-def _preview_parquet(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> PreviewPage:
-    import pyarrow.parquet as pq
-
+def _preview_embedded_schema(
+    state: BrowserState,
+    path: str,
+    info: dict[str, Any],
+    offset: int,
+    format: DataFormat,
+) -> PreviewPage:
     wanted = state.preview_rows + 1
     rows: list[dict[str, Any]] = []
     skipped = 0
     with state.fs.open(path, "rb") as file:
-        parquet = pq.ParquetFile(file)
-        for batch in parquet.iter_batches(batch_size=wanted):
+        batches = DEFAULT_REGISTRY.get(format).iter_batches(
+            file,
+            batch_size=wanted,
+            row_limit=offset + wanted,
+            byte_limit=state.preview_bytes,
+        )
+        for batch in batches:
             batch_rows = batch.to_pylist()
             if skipped + len(batch_rows) <= offset:
                 skipped += len(batch_rows)
@@ -327,8 +337,10 @@ def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None
         return _preview_delimited(state, path, info, offset)
     if lower_path.endswith((".jsonl", ".ndjson")):
         return _preview_jsonl(state, path, info, offset)
-    if lower_path.endswith(".parquet"):
-        return _preview_parquet(state, path, info, offset)
+    if lower_path.endswith((".arrow", ".ipc")):
+        return _preview_embedded_schema(state, path, info, offset, DataFormat.ARROW)
+    if lower_path.endswith((".parquet", ".pq")):
+        return _preview_embedded_schema(state, path, info, offset, DataFormat.PARQUET)
 
     max_bytes = state.preview_bytes if max_bytes is None else max(max_bytes, 1)
     with state.fs.open(path, "rb") as file:

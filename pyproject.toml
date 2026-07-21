@@ -33,6 +33,7 @@ classifiers = [
 
 dependencies = [
     "fsspec",
+    "fsspec-data>=0.2.3",
 ]
 
 [project.optional-dependencies]
