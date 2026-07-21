@@ -7,12 +7,16 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use arrow::util::display::array_value_to_string;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use fsspec_rs::{FileInfo, FileSystem, FileType, FsError, FsResult, LocalFs, S3Config, S3Fs};
+use fsspec_data::{CancellationToken, CodecReader, DataFormat, StreamOptions, DEFAULT_REGISTRY};
+use fsspec_rs::{
+    FileInfo, FileSystem, FileType, FsError, FsResult, LocalFs, OpenMode, S3Config, S3Fs,
+};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
@@ -23,6 +27,7 @@ use url::Url;
 
 const DEFAULT_PAGE_SIZE: usize = 256;
 const DEFAULT_PREVIEW_BYTES: usize = 100 * 1024 * 1024;
+const DEFAULT_PREVIEW_ROWS: usize = 20;
 const PREFETCH_MARGIN: usize = 3;
 
 struct Args {
@@ -30,6 +35,7 @@ struct Args {
     storage_options: HashMap<String, String>,
     page_size: usize,
     preview_bytes: usize,
+    preview_rows: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -44,6 +50,7 @@ impl Args {
         let mut storage_options = HashMap::new();
         let mut page_size = DEFAULT_PAGE_SIZE;
         let mut preview_bytes = DEFAULT_PREVIEW_BYTES;
+        let mut preview_rows = DEFAULT_PREVIEW_ROWS;
 
         while let Some(value) = values.next() {
             match value.as_str() {
@@ -71,6 +78,14 @@ impl Args {
                         .parse()
                         .map_err(|_| format!("invalid --preview-bytes: {raw}"))?;
                 }
+                "--preview-rows" => {
+                    let raw = values
+                        .next()
+                        .ok_or_else(|| "--preview-rows requires a value".to_string())?;
+                    preview_rows = raw
+                        .parse()
+                        .map_err(|_| format!("invalid --preview-rows: {raw}"))?;
+                }
                 _ if value.starts_with("-o") && value.len() > 2 => {
                     let (key, option_value) = parse_key_value(&value[2..])?;
                     storage_options.insert(key, option_value);
@@ -96,6 +111,14 @@ impl Args {
                         .parse()
                         .map_err(|_| format!("invalid --preview-bytes: {raw}"))?;
                 }
+                _ if value.starts_with("--preview-rows=") => {
+                    let raw = value
+                        .strip_prefix("--preview-rows=")
+                        .expect("prefix checked");
+                    preview_rows = raw
+                        .parse()
+                        .map_err(|_| format!("invalid --preview-rows: {raw}"))?;
+                }
                 _ => {
                     if url.is_some() {
                         return Err(format!("unexpected argument: {value}"));
@@ -110,6 +133,7 @@ impl Args {
             storage_options,
             page_size: page_size.max(1),
             preview_bytes: preview_bytes.max(1),
+            preview_rows: preview_rows.max(1),
         }))
     }
 
@@ -185,6 +209,7 @@ Options:
   -o, --storage-option KEY=VALUE   Backend option. May be repeated.
       --page-size N                Entries fetched/revealed per page. Default: {DEFAULT_PAGE_SIZE}
       --preview-bytes N            Maximum file preview bytes. Default: {DEFAULT_PREVIEW_BYTES}
+      --preview-rows N             Maximum rows per tabular preview page. Default: {DEFAULT_PREVIEW_ROWS}
   -h, --help                       Show this help.
 
 Keys:
@@ -206,15 +231,30 @@ pub struct ListPage {
     pub has_more: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PreviewContinuation {
     Offset(usize),
     Token(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PreviewContent {
+    Bytes(Vec<u8>),
+    Table {
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewPage {
     pub bytes: Vec<u8>,
+    pub continuation: Option<PreviewContinuation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreviewDataPage {
+    pub content: PreviewContent,
     pub continuation: Option<PreviewContinuation>,
 }
 
@@ -234,6 +274,19 @@ pub trait BrowserBackend: Send {
         continuation: Option<&PreviewContinuation>,
         limit: usize,
     ) -> FsResult<PreviewPage>;
+    fn preview_data(
+        &self,
+        path: &str,
+        continuation: Option<&PreviewContinuation>,
+        _row_limit: usize,
+        byte_limit: usize,
+    ) -> FsResult<PreviewDataPage> {
+        let page = self.preview(path, continuation, byte_limit)?;
+        Ok(PreviewDataPage {
+            content: PreviewContent::Bytes(page.bytes),
+            continuation: page.continuation,
+        })
+    }
     fn download(&self, path: &str, local: &Path) -> FsResult<()>;
     fn display_path(&self, path: &str) -> String;
 }
@@ -342,6 +395,33 @@ impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
         })
     }
 
+    fn preview_data(
+        &self,
+        path: &str,
+        continuation: Option<&PreviewContinuation>,
+        row_limit: usize,
+        byte_limit: usize,
+    ) -> FsResult<PreviewDataPage> {
+        if let Some(format) = tabular_format(path) {
+            let offset = match continuation {
+                None => 0,
+                Some(PreviewContinuation::Offset(offset)) => *offset,
+                Some(PreviewContinuation::Token(_)) => {
+                    return Err(FsError::InvalidArgument(
+                        "this backend does not support token preview continuations".into(),
+                    ));
+                }
+            };
+            let reader = self.fs.open(path, OpenMode::Read, None)?;
+            return decode_tabular_preview(Box::new(reader), format, offset, row_limit, byte_limit);
+        }
+        let page = self.preview(path, continuation, byte_limit)?;
+        Ok(PreviewDataPage {
+            content: PreviewContent::Bytes(page.bytes),
+            continuation: page.continuation,
+        })
+    }
+
     fn download(&self, path: &str, local: &Path) -> FsResult<()> {
         if let Some(parent) = local.parent() {
             fs::create_dir_all(parent)?;
@@ -356,6 +436,87 @@ impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
         }
         format!("{}://{path}", self.display_protocol)
     }
+}
+
+fn tabular_format(path: &str) -> Option<DataFormat> {
+    let path = path.to_ascii_lowercase();
+    if path.ends_with(".arrow") || path.ends_with(".ipc") {
+        Some(DataFormat::Arrow)
+    } else if path.ends_with(".parquet") || path.ends_with(".pq") {
+        Some(DataFormat::Parquet)
+    } else {
+        None
+    }
+}
+
+fn decode_tabular_preview(
+    reader: Box<dyn CodecReader>,
+    format: DataFormat,
+    offset: usize,
+    row_limit: usize,
+    byte_limit: usize,
+) -> FsResult<PreviewDataPage> {
+    let wanted = row_limit.max(1).saturating_add(1);
+    let stream = DEFAULT_REGISTRY
+        .get(format)
+        .and_then(|codec| {
+            codec.decode_reader(
+                reader,
+                None,
+                StreamOptions {
+                    batch_size: wanted,
+                    row_limit: Some(offset.saturating_add(wanted)),
+                    byte_limit: Some(byte_limit.max(1)),
+                },
+                CancellationToken::new(),
+            )
+        })
+        .map_err(|error| FsError::Other(error.to_string()))?;
+    let columns = stream
+        .schema
+        .fields()
+        .iter()
+        .map(|field| field.name().clone())
+        .collect::<Vec<_>>();
+    let mut rows = Vec::with_capacity(wanted);
+    let mut skipped = 0;
+
+    for batch in stream {
+        let batch = batch.map_err(|error| FsError::Other(error.to_string()))?;
+        if skipped + batch.num_rows() <= offset {
+            skipped += batch.num_rows();
+            continue;
+        }
+        let start = offset.saturating_sub(skipped);
+        let length = (batch.num_rows() - start).min(wanted - rows.len());
+        for row_index in start..start + length {
+            let row = batch
+                .columns()
+                .iter()
+                .map(|array| {
+                    if array.is_null(row_index) {
+                        Ok("null".to_string())
+                    } else {
+                        array_value_to_string(array.as_ref(), row_index)
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| FsError::Other(error.to_string()))?;
+            rows.push(row);
+        }
+        skipped += batch.num_rows();
+        if rows.len() == wanted {
+            break;
+        }
+    }
+
+    let has_more = rows.len() > row_limit;
+    rows.truncate(row_limit);
+    let next_offset = offset + rows.len();
+    Ok(PreviewDataPage {
+        content: PreviewContent::Table { columns, rows },
+        continuation: has_more.then_some(PreviewContinuation::Offset(next_offset)),
+    })
 }
 
 fn path_to_string(path: &Path) -> FsResult<String> {
@@ -588,7 +749,7 @@ enum PendingKind {
 
 enum JobResult {
     ListPage(Result<ListPage, String>),
-    Preview(Result<PreviewPage, String>),
+    Preview(Result<PreviewDataPage, String>),
     Download(Result<(), String>),
 }
 
@@ -611,6 +772,7 @@ struct BrowserApp {
     selected: usize,
     page_size: usize,
     preview_bytes: usize,
+    preview_rows: usize,
     message: String,
     preview_cache: HashMap<String, PreviewCache>,
     preview_requests: HashSet<String>,
@@ -624,8 +786,66 @@ struct BrowserApp {
 }
 
 struct PreviewCache {
-    lines: Vec<String>,
+    content: PreviewCacheContent,
     continuation: Option<PreviewContinuation>,
+}
+
+enum PreviewCacheContent {
+    Lines(Vec<String>),
+    Table {
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+    },
+}
+
+impl PreviewCache {
+    fn new(
+        content: PreviewContent,
+        continuation: Option<PreviewContinuation>,
+        truncated: bool,
+    ) -> Self {
+        Self {
+            content: preview_cache_content(content, truncated),
+            continuation,
+        }
+    }
+
+    fn append(&mut self, content: PreviewContent, continuation: Option<PreviewContinuation>) {
+        match (&mut self.content, content) {
+            (PreviewCacheContent::Lines(existing), PreviewContent::Bytes(bytes)) => {
+                existing.extend(bytes_to_preview_lines(&bytes, false));
+            }
+            (
+                PreviewCacheContent::Table {
+                    columns: existing_columns,
+                    rows: existing_rows,
+                },
+                PreviewContent::Table { columns, rows },
+            ) if *existing_columns == columns => existing_rows.extend(rows),
+            (_, content) => self.content = preview_cache_content(content, false),
+        }
+        self.continuation = continuation;
+    }
+
+    fn lines(&self) -> Vec<String> {
+        match &self.content {
+            PreviewCacheContent::Lines(lines) => lines.clone(),
+            PreviewCacheContent::Table { columns, rows } => table_lines(columns, rows),
+        }
+    }
+
+    fn line_count(&self) -> usize {
+        self.lines().len()
+    }
+}
+
+fn preview_cache_content(content: PreviewContent, truncated: bool) -> PreviewCacheContent {
+    match content {
+        PreviewContent::Bytes(bytes) => {
+            PreviewCacheContent::Lines(bytes_to_preview_lines(&bytes, truncated))
+        }
+        PreviewContent::Table { columns, rows } => PreviewCacheContent::Table { columns, rows },
+    }
 }
 
 impl BrowserApp {
@@ -634,6 +854,7 @@ impl BrowserApp {
         start_path: String,
         page_size: usize,
         preview_bytes: usize,
+        preview_rows: usize,
     ) -> Self {
         let backend_name = backend.name().to_string();
         let mut app = Self {
@@ -644,6 +865,7 @@ impl BrowserApp {
             selected: 0,
             page_size,
             preview_bytes,
+            preview_rows,
             message: String::new(),
             preview_cache: HashMap::new(),
             preview_requests: HashSet::new(),
@@ -723,21 +945,20 @@ impl BrowserApp {
                 JobResult::Preview(result),
             ) => match result {
                 Ok(page) => {
-                    let lines = bytes_to_preview_lines(
-                        &page.bytes,
-                        page.continuation.is_none() && initial && size > page.bytes.len() as u64,
+                    let truncated = matches!(
+                        &page.content,
+                        PreviewContent::Bytes(bytes)
+                            if page.continuation.is_none()
+                                && initial
+                                && size > bytes.len() as u64
                     );
                     if initial {
                         self.preview_cache.insert(
                             path.clone(),
-                            PreviewCache {
-                                lines,
-                                continuation: page.continuation,
-                            },
+                            PreviewCache::new(page.content, page.continuation, truncated),
                         );
                     } else if let Some(cached) = self.preview_cache.get_mut(&path) {
-                        cached.lines.extend(lines);
-                        cached.continuation = page.continuation;
+                        cached.append(page.content, page.continuation);
                     }
                     self.message = format!("preview loaded for {}", self.display_path(&path));
                 }
@@ -745,7 +966,9 @@ impl BrowserApp {
                     self.preview_cache.insert(
                         path.clone(),
                         PreviewCache {
-                            lines: vec![format!("preview error: {err}")],
+                            content: PreviewCacheContent::Lines(vec![format!(
+                                "preview error: {err}"
+                            )]),
                             continuation: None,
                         },
                     );
@@ -842,6 +1065,7 @@ impl BrowserApp {
     ) {
         let backend = Arc::clone(&self.backend);
         let preview_bytes = self.preview_bytes;
+        let preview_rows = self.preview_rows;
         let worker_path = path.clone();
         let worker_continuation = continuation.clone();
         let (sender, receiver) = mpsc::channel();
@@ -851,7 +1075,12 @@ impl BrowserApp {
                 .map_err(|err| err.to_string())
                 .and_then(|backend| {
                     backend
-                        .preview(&worker_path, worker_continuation.as_ref(), preview_bytes)
+                        .preview_data(
+                            &worker_path,
+                            worker_continuation.as_ref(),
+                            preview_rows,
+                            preview_bytes,
+                        )
                         .map_err(|err| err.to_string())
                 });
             let _ = sender.send(JobResult::Preview(result));
@@ -1094,7 +1323,7 @@ impl BrowserApp {
         let (line_count, continuation) = self
             .preview_cache
             .get(&path)
-            .map(|cache| (cache.lines.len(), cache.continuation.clone()))
+            .map(|cache| (cache.line_count(), cache.continuation.clone()))
             .unwrap_or((0, None));
         if line_count == 0 {
             return;
@@ -1131,7 +1360,7 @@ impl BrowserApp {
             .active_preview_path
             .as_ref()
             .and_then(|path| self.preview_cache.get(path))
-            .map(|cache| cache.lines.len())
+            .map(PreviewCache::line_count)
             .unwrap_or(0);
         self.preview_scroll = line_count.saturating_sub(1).min(u16::MAX as usize) as u16;
         self.scroll_preview(0);
@@ -1256,7 +1485,7 @@ impl BrowserApp {
             self.active_preview_path = Some(path.clone());
         }
         if let Some(cached) = self.preview_cache.get(&path) {
-            return cached.lines.clone();
+            return cached.lines();
         }
         if self.auto_preview() {
             self.start_preview(path.clone(), size, None);
@@ -1395,6 +1624,13 @@ fn json_table_lines(value: &serde_json::Value) -> Option<Vec<String>> {
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
+    Some(table_lines(&columns, &values))
+}
+
+fn table_lines(columns: &[String], values: &[Vec<String>]) -> Vec<String> {
+    if values.is_empty() {
+        return vec!["(no rows)".to_string()];
+    }
     let widths = columns
         .iter()
         .enumerate()
@@ -1421,7 +1657,7 @@ fn json_table_lines(value: &serde_json::Value) -> Option<Vec<String>> {
             .collect::<Vec<_>>()
             .join(" | ")
     };
-    let mut lines = vec![format_row(&columns)];
+    let mut lines = vec![format_row(columns)];
     lines.push(
         widths
             .iter()
@@ -1430,7 +1666,7 @@ fn json_table_lines(value: &serde_json::Value) -> Option<Vec<String>> {
             .join("-+-"),
     );
     lines.extend(values.iter().map(|row| format_row(row)));
-    Some(lines)
+    lines
 }
 
 fn json_cell(value: &serde_json::Value) -> String {
@@ -1641,7 +1877,13 @@ where
                     return Ok(());
                 };
                 let (backend, start_path) = build_backend(&session, fallback)?;
-                app = BrowserApp::new(backend, start_path, app.page_size, app.preview_bytes);
+                app = BrowserApp::new(
+                    backend,
+                    start_path,
+                    app.page_size,
+                    app.preview_bytes,
+                    app.preview_rows,
+                );
             }
         }
     }
@@ -1803,7 +2045,13 @@ where
         return Ok(());
     };
     let (backend, start_path) = build_backend(&session, &fallback)?;
-    let app = BrowserApp::new(backend, start_path, args.page_size, args.preview_bytes);
+    let app = BrowserApp::new(
+        backend,
+        start_path,
+        args.page_size,
+        args.preview_bytes,
+        args.preview_rows,
+    );
     run_terminal(app, &fallback)?;
     Ok(())
 }
@@ -1819,6 +2067,10 @@ pub fn run_browser_from_env() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::array::{Int64Array, StringArray};
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use std::io::Cursor;
 
     type Calls = Arc<Mutex<Vec<(String, usize)>>>;
     type PreviewCalls = Arc<Mutex<Vec<String>>>;
@@ -1898,7 +2150,7 @@ mod tests {
             preview_calls: preview_calls.clone(),
             auto_preview: false,
         };
-        let mut app = BrowserApp::new(Box::new(backend), "/root".to_string(), 2, 16);
+        let mut app = BrowserApp::new(Box::new(backend), "/root".to_string(), 2, 16, 2);
         settle(&mut app);
         (app, calls, preview_calls)
     }
@@ -1930,16 +2182,101 @@ mod tests {
 
         assert!(args.session().is_none());
         assert_eq!(args.preview_bytes, 100 * 1024 * 1024);
+        assert_eq!(args.preview_rows, 20);
+    }
+
+    #[test]
+    fn tabular_preview_formats_are_paged() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("name", DataType::Utf8, false),
+            Field::new("score", DataType::Int64, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["ada", "grace", "lin"])),
+                Arc::new(Int64Array::from(vec![2, 3, 4])),
+            ],
+        )
+        .unwrap();
+
+        for format in [DataFormat::Arrow, DataFormat::Parquet] {
+            let encoded = DEFAULT_REGISTRY
+                .get(format)
+                .unwrap()
+                .encode(schema.clone(), &[batch.clone()])
+                .unwrap();
+            let first = decode_tabular_preview(
+                Box::new(Cursor::new(encoded.clone())),
+                format,
+                0,
+                2,
+                1024 * 1024,
+            )
+            .unwrap();
+            let limit_error =
+                decode_tabular_preview(Box::new(Cursor::new(encoded.clone())), format, 0, 2, 1)
+                    .unwrap_err();
+            let second =
+                decode_tabular_preview(Box::new(Cursor::new(encoded)), format, 2, 2, 1024 * 1024)
+                    .unwrap();
+
+            assert_eq!(
+                first.content,
+                PreviewContent::Table {
+                    columns: vec!["name".to_string(), "score".to_string()],
+                    rows: vec![
+                        vec!["ada".to_string(), "2".to_string()],
+                        vec!["grace".to_string(), "3".to_string()],
+                    ],
+                }
+            );
+            assert_eq!(first.continuation, Some(PreviewContinuation::Offset(2)));
+            assert!(limit_error.to_string().contains("byte limit"));
+            assert_eq!(
+                second.content,
+                PreviewContent::Table {
+                    columns: vec!["name".to_string(), "score".to_string()],
+                    rows: vec![vec!["lin".to_string(), "4".to_string()]],
+                }
+            );
+            assert_eq!(second.continuation, None);
+
+            let mut cache = PreviewCache::new(first.content, first.continuation, false);
+            cache.append(second.content, second.continuation);
+            assert_eq!(
+                cache.lines(),
+                vec![
+                    "name  | score".to_string(),
+                    "------+------".to_string(),
+                    "ada   | 2    ".to_string(),
+                    "grace | 3    ".to_string(),
+                    "lin   | 4    ".to_string(),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn tabular_preview_format_uses_embedded_schema_extensions() {
+        assert_eq!(tabular_format("data.arrow"), Some(DataFormat::Arrow));
+        assert_eq!(tabular_format("data.ipc"), Some(DataFormat::Arrow));
+        assert_eq!(tabular_format("data.parquet"), Some(DataFormat::Parquet));
+        assert_eq!(tabular_format("data.pq"), Some(DataFormat::Parquet));
+        assert_eq!(tabular_format("data.csv"), None);
     }
 
     #[test]
     fn args_with_url_have_session() {
-        let args = Args::parse(vec!["s3-rs://bucket".to_string()].into_iter())
-            .unwrap()
-            .unwrap();
+        let args = Args::parse(
+            vec!["s3-rs://bucket".to_string(), "--preview-rows=7".to_string()].into_iter(),
+        )
+        .unwrap()
+        .unwrap();
         let session = args.session().unwrap();
 
         assert_eq!(session.url, "s3-rs://bucket");
+        assert_eq!(args.preview_rows, 7);
     }
 
     #[test]
@@ -2150,7 +2487,7 @@ mod tests {
         app.preview_cache.insert(
             path.clone(),
             PreviewCache {
-                lines: vec!["first page".to_string()],
+                content: PreviewCacheContent::Lines(vec!["first page".to_string()]),
                 continuation: None,
             },
         );
@@ -2182,7 +2519,10 @@ mod tests {
 
         assert_eq!(
             app.message,
-            "downloaded /root/file.txt to root/file.txt".to_string()
+            format!(
+                "downloaded /root/file.txt to {}",
+                PathBuf::from("root").join("file.txt").display()
+            )
         );
     }
 

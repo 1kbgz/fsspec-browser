@@ -31,13 +31,13 @@ checks: check
 
 .PHONY: test tests test-ci tests-ci
 test:  ## run the tests
-	cargo llvm-cov nextest --cobertura --output-path  junit.xml
+	cargo llvm-cov nextest --all-features --cobertura --output-path  junit.xml
 
 # alias
 tests: test
 
 coverage:
-	cargo llvm-cov nextest --lcov --output-path coverage
+	cargo llvm-cov nextest --all-features --lcov --output-path coverage
 
 .PHONY: dist publish
 dist:  ## create dist
