@@ -1,6 +1,6 @@
 {
   "name": "fsspec-browser",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "terminal and web browser for fsspec backends",
   "repository": "git@github.com:1kbgz/fsspec-browser.git",
   "author": "the fsspec-browser authors <dev@1kbgz.com>",
