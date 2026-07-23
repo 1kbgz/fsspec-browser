@@ -1,4 +1,4 @@
-from fsspec_browser import *  # noqa
+from fsspec_browser import *
 
 
 def test_all():

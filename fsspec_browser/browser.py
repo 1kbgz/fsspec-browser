@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 from fsspec_browser.fsspec_browser import run_browser as _run_browser
 
@@ -17,7 +17,7 @@ def run(argv: Sequence[str] | None = None) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         return run(argv)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(exc, file=sys.stderr)
         return 1
 

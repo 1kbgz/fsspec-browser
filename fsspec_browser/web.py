@@ -12,12 +12,13 @@ import secrets
 import shutil
 import sys
 import webbrowser
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Literal, Sequence, TypedDict
+from typing import Any, Literal, TypedDict
 from urllib.parse import parse_qs, unquote, urlparse
 
 import fsspec
@@ -130,7 +131,7 @@ def create_state(
 def _display_path(fs: Any, path: str) -> str:
     try:
         return str(fs.unstrip_protocol(path))
-    except Exception:
+    except Exception:  # noqa: BLE001
         return path
 
 
@@ -511,7 +512,7 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(preview_file(state, path, offset=max(offset, 0)))
             else:
                 self._send_static(parsed.path)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def do_POST(self) -> None:
@@ -539,7 +540,7 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "missing path"}, HTTPStatus.BAD_REQUEST)
                 return
             self._send_json(download_file(state, path))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def log_message(self, _format: str, *_args: Any) -> None:
@@ -557,7 +558,7 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length", "0"))
         payload = json.loads(self.rfile.read(length) or b"{}")
         if not isinstance(payload, dict):
-            raise ValueError("JSON body must be an object")
+            raise TypeError("JSON body must be an object")
         return payload
 
     def _active_state(self) -> BrowserState:
@@ -569,9 +570,7 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
         if not _is_loopback_host(self.headers.get("host")):
             return False
         origin = self.headers.get("origin")
-        if origin and not _is_loopback_host(urlparse(origin).hostname):
-            return False
-        return True
+        return not (origin and not _is_loopback_host(urlparse(origin).hostname))
 
     def _trusted_api_request(self) -> bool:
         token = self.headers.get("x-fsspec-browser-token")
@@ -720,7 +719,7 @@ def run(argv: Sequence[str] | None = None) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         return run(argv)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(exc, file=sys.stderr)
         return 1
 
