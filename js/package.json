@@ -44,7 +44,7 @@
     "watch": "nodemon --watch src -e ts,css,html --exec \"pnpm build:debug\""
   },
   "dependencies": {
-    "@pierre/trees": "1.0.0-beta.4"
+    "@pierre/trees": "1.0.0-beta.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
