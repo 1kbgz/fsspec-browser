@@ -16,14 +16,23 @@ const COMMON_LOADER = {
   ".jsx": "jsx",
   ".png": "file",
   ".ttf": "file",
+<<<<<<< before updating
+=======
+  ".wasm": "file",
+>>>>>>> after updating
 };
 
 const DEFAULT_BUILD = {
   target: ["es2022"],
   bundle: true,
   format: "esm",
+<<<<<<< before updating
   minify: !DEBUG,
   sourcemap: DEBUG,
+=======
+  minify: DEBUG,
+  sourcemap: true,
+>>>>>>> after updating
   metafile: true,
   entryNames: "[name]",
   chunkNames: "[name]",

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+<<<<<<< before updating
 test.describe("preview paging", () => {
   test("loads the next table page from its continuation", async ({ page }) => {
     const previewOffsets = [];
@@ -76,5 +77,10 @@ test.describe("preview paging", () => {
       "lin",
     );
     expect(previewOffsets).toEqual([0, 2]);
+=======
+test.describe("Basics", () => {
+  test("basic", async () => {
+    await expect("").toBe("");
+>>>>>>> after updating
   });
 });
