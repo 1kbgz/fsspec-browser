@@ -31,19 +31,10 @@
     "build": "pnpm run build:prod",
     "clean": "rm -rf dist lib playwright-report ../fsspec_browser/extension",
     "dev": "npm-run-all -p start watch",
-<<<<<<< before updating
-    "lint:js": "prettier --check \"src/**/*.{js,ts,jsx,tsx,css}\" \"tests/**/*.{js,ts,jsx,tsx}\" \"*.mjs\" \"*.json\"",
-    "lint": "pnpm run lint:js",
-    "fix:js": "prettier  --write \"src/**/*.{js,ts,jsx,tsx,css}\" \"tests/**/*.{js,ts,jsx,tsx}\" \"*.mjs\" \"*.json\"",
-    "fix": "pnpm run fix:js",
-=======
     "lint:js": "oxlint . && oxfmt --check \"src/**/*.{js,ts,jsx,tsx,css}\" \"tests/**/*.{js,ts,jsx,tsx}\" \"*.mjs\" \"*.json\"",
-    "lint:rust": "cargo clippy --all-features && cargo fmt --all -- --check",
-    "lint": "npm-run-all lint:*",
+    "lint": "pnpm run lint:js",
     "fix:js": "oxlint --fix . && oxfmt --write \"src/**/*.{js,ts,jsx,tsx,css}\" \"tests/**/*.{js,ts,jsx,tsx}\" \"*.mjs\" \"*.json\"",
-    "fix:rust": "cargo fmt --all",
-    "fix": "npm-run-all fix:*",
->>>>>>> after updating
+    "fix": "pnpm run fix:js",
     "preinstall": "npx only-allow pnpm",
     "prepack": "pnpm run build",
     "start": "http-server -p 3000 -o examples/",
