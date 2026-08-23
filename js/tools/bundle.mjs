@@ -24,11 +24,7 @@ const DEFAULT_BUILD = {
   bundle: true,
   format: "esm",
   minify: !DEBUG,
-<<<<<<< before updating
   sourcemap: DEBUG,
-=======
-  sourcemap: true,
->>>>>>> after updating
   metafile: true,
   entryNames: "[name]",
   chunkNames: "[name]",
