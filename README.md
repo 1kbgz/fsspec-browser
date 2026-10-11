@@ -61,6 +61,28 @@ fsspec-browser-web db+duckdb:// \
 Tables and stored views remain directory-like database relations, but are explicitly
 previewable as bounded row sets. Use **SQL Preview** for an arbitrary read query.
 
+## Build from source
+
+Install Rust, Node.js 22, pnpm 10.28.2, and the pinned Cargo license collector before building:
+
+```bash
+cargo install cargo-bundle-licenses --version 4.2.0 --locked
+make develop
+make build
+```
+
+Wheels include the pnpm production dependency inventory and Cargo dependency license texts under
+`fsspec_browser/licenses`. Both bundles preserve original texts and notices. The pnpm inventory
+excludes development tools; review it again if JavaScript build inputs change. Cargo collection
+includes nonhost dependencies and is not a linked-code-only inventory.
+
+Missing license texts fail the build. The [Cargo override reference](rust/LICENSES.md) records
+provisional source-backed texts that require human review before shipping. Collection does not
+certify compliance or cover Python dependencies and separately vendored assets.
+
+`SKIP_HATCH_JS` also skips pnpm license collection. Distribution builds must run both hooks;
+the Linux wheel containers install Node/pnpm rather than skipping the JavaScript hook.
+
 ## Documentation
 
 - [Preview local data](docs/src/tutorial.md): guided first use.
