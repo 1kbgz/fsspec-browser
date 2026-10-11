@@ -125,7 +125,7 @@ cargo install cargo-bundle-licenses --version 4.2.0 --locked
 bash {project}/scripts/setup-linux-wheel-node.sh
 """
 before-build = "cargo clean --manifest-path {package}/Cargo.toml && rm -f {package}/fsspec_browser/*.so"
-environment = {PATH="/opt/fsspec-browser-node/bin:$HOME/.cargo/bin:$PATH", CARGO_TERM_COLOR="always" }
+environment = {PATH="/opt/fsspec-browser-node/bin:$HOME/.cargo/bin:$PATH", CARGO_TERM_COLOR="always", CI="true" }
 skip = "*i686* *musllinux*"
 
 [tool.cibuildwheel.macos]
