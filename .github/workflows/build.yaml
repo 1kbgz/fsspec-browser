@@ -67,11 +67,29 @@ jobs:
       - name: Setup Rust
         uses: actions-ext/rust/setup@10df15e12bbd1cc1cf48089f2e232349f98c74e7
 
+      - name: Install Cargo license collector
+        run: cargo install cargo-bundle-licenses --version 4.2.0 --locked
+        if: matrix.target == 'native'
+
       - name: Setup Node.js
         uses: actions-ext/node/setup@03c9f6b2d9c9fa2c26cfa22d0fa379a69329b319
         with:
           version: 22.x
+          pnpm_version: 10.28.2
         if: matrix.target == 'native'
+
+      - name: Install native pnpm executable (Windows)
+        run: |
+          $pnpmDir = Join-Path $env:RUNNER_TEMP "pnpm-native"
+          npm install --prefix $pnpmDir --no-audit --no-fund --ignore-scripts @pnpm/win-x64@10.28.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Join-Path $pnpmDir "node_modules\@pnpm\win-x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        shell: pwsh
+        if: matrix.target == 'native' && runner.os == 'Windows'
+
+      - name: Verify direct pnpm subprocess (Windows)
+        run: python -c "import subprocess; result = subprocess.run(['pnpm', '--version'], check=True, capture_output=True, text=True); assert result.stdout.strip() == '10.28.2', result.stdout; print(result.stdout.strip())"
+        if: matrix.target == 'native' && runner.os == 'Windows'
 
       - name: Install dependencies
         run: make develop
@@ -151,8 +169,6 @@ jobs:
           make dist-py-wheel
           make dist-check
         shell: bash
-        env:
-          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=11.0
         if: matrix.target == 'native' && runner.os != 'Linux'
 
       - name: Test wheel

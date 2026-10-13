@@ -1,0 +1,306 @@
+{
+  "status": "Provisional source-backed overrides; human review required before shipping",
+  "sources": [
+    {
+      "package": "r-efi-terms",
+      "version": "canonical",
+      "path": "Apache-2.0.txt",
+      "origin": "cached:fsspec-rs original LICENSE from previous integration",
+      "sha256": "342d89813d1d45d0ab63dd908ae9a43130f3c5ea52b2dd55726bda3deb7009ef"
+    },
+    {
+      "package": "r-efi-terms",
+      "version": "canonical",
+      "path": "LGPL-2.1.txt",
+      "origin": "cached:https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt",
+      "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+    },
+    {
+      "package": "alloc-stdlib",
+      "version": "0.2.4",
+      "path": "LICENSE",
+      "origin": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+    },
+    {
+      "package": "brotli",
+      "version": "7.0.0",
+      "path": "LICENSE.BSD-3-Clause",
+      "origin": "published-crate:brotli@7.0.0/LICENSE.BSD-3-Clause",
+      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+    },
+    {
+      "package": "flatbuffers",
+      "version": "24.12.23",
+      "path": "LICENSE",
+      "origin": "https://raw.githubusercontent.com/google/flatbuffers/a2cd1ea3b6d3fee220106b5fed3f7ce8da9eb757/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "package": "fsspec_data",
+      "version": "0.2.3",
+      "path": "LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-data/ec4ea4f311e7b15af087a74911668c5a387d172b/LICENSE",
+      "sha256": "7cb572d4a9535d81e1b9187f31d5e60c5459cb4d47f4c61b330d25da14002650"
+    },
+    {
+      "package": "fsspec_rs",
+      "version": "0.1.5",
+      "path": "LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/7d85945bae87e5439a048572b3def6ff8c857587/LICENSE",
+      "sha256": "342d89813d1d45d0ab63dd908ae9a43130f3c5ea52b2dd55726bda3deb7009ef"
+    },
+    {
+      "package": "fsspec_rs_bridge",
+      "version": "0.1.5",
+      "path": "LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/7d85945bae87e5439a048572b3def6ff8c857587/LICENSE",
+      "sha256": "342d89813d1d45d0ab63dd908ae9a43130f3c5ea52b2dd55726bda3deb7009ef"
+    },
+    {
+      "package": "mac_address",
+      "version": "1.2.0",
+      "path": "LICENSE-APACHE2.0",
+      "origin": "published-crate:mac_address@1.2.0/LICENSE-APACHE2.0",
+      "sha256": "c93a7014a32c88c71551bd6fb4cae8cc9445c237d7e4a0774d4fc5e06089dbd9"
+    },
+    {
+      "package": "r-efi",
+      "version": "5.3.0",
+      "path": "AUTHORS",
+      "origin": "published-crate:r-efi@5.3.0/AUTHORS",
+      "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
+    },
+    {
+      "package": "r-efi",
+      "version": "5.3.0",
+      "path": "AUTHORS",
+      "origin": "https://raw.githubusercontent.com/r-efi/r-efi/97b55bed1c2c91dcbf787674849f05337ff80b33/AUTHORS",
+      "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
+    },
+    {
+      "package": "r-efi",
+      "version": "6.0.0",
+      "path": "AUTHORS",
+      "origin": "published-crate:r-efi@6.0.0/AUTHORS",
+      "sha256": "d027e91dbc9cdbb2f1190068e498bd6b61cff022b6a032b191021ba658d96111"
+    },
+    {
+      "package": "r-efi",
+      "version": "6.0.0",
+      "path": "AUTHORS",
+      "origin": "https://raw.githubusercontent.com/r-efi/r-efi/7e1b0322d31d625f81a5656096330934f9cd835d/AUTHORS",
+      "sha256": "d027e91dbc9cdbb2f1190068e498bd6b61cff022b6a032b191021ba658d96111"
+    },
+    {
+      "package": "ratatui-termina",
+      "version": "0.1.0",
+      "path": "LICENSE",
+      "origin": "https://raw.githubusercontent.com/ratatui/ratatui/e665c36cb14752a61cd777fbd06dbef8474f2add/LICENSE",
+      "sha256": "50eb43e8d742c9c61a9391e42b2184fce54dbd1893a1bb1c85b8c9ee217ab1f5"
+    },
+    {
+      "package": "termina",
+      "version": "0.3.3",
+      "path": "LICENSE-MPL",
+      "origin": "published-crate:termina@0.3.3/LICENSE-MPL",
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    },
+    {
+      "package": "thrift",
+      "version": "0.17.0",
+      "path": "LICENSE",
+      "origin": "https://raw.githubusercontent.com/apache/thrift/60655d2de79e973b89fab52af82f9628d4843b0f/LICENSE",
+      "sha256": "d315e6cdedc07c478de6992027bfb66f220886c6216fd7e9885ced30c3703646"
+    },
+    {
+      "package": "thrift",
+      "version": "0.17.0",
+      "path": "NOTICE",
+      "origin": "https://raw.githubusercontent.com/apache/thrift/60655d2de79e973b89fab52af82f9628d4843b0f/NOTICE",
+      "sha256": "c2534e065069887565f871f0648b013a7e5f4a422809faf4ae3c590b7c0bf561"
+    },
+    {
+      "package": "vtparse",
+      "version": "0.6.2",
+      "path": "LICENSE.md",
+      "origin": "https://raw.githubusercontent.com/wez/wezterm/edeae72b5fc55c7fa4aa1d08bbefd08c5493f757/LICENSE.md",
+      "sha256": "37db33bbbd7348969eda397b89a16f252d56c1ca7481b6ccaf56ccdcbab5dcca"
+    },
+    {
+      "package": "wezterm-input-types",
+      "version": "0.1.0",
+      "path": "LICENSE.md",
+      "origin": "https://raw.githubusercontent.com/wez/wezterm/d5ca5509b95edc31291ba29bd1fcbf3f0b12c92d/LICENSE.md",
+      "sha256": "37db33bbbd7348969eda397b89a16f252d56c1ca7481b6ccaf56ccdcbab5dcca"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "Cargo.toml.orig",
+      "origin": "published-crate:winapi-i686-pc-windows-gnu@0.4.0/Cargo.toml.orig",
+      "sha256": "5257d6f5283ab052b6af51f578a8c74e14c31deb53a7c6cd9e6fa16135d57eb3"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "i686/Cargo.toml",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/i686/Cargo.toml",
+      "sha256": "5257d6f5283ab052b6af51f578a8c74e14c31deb53a7c6cd9e6fa16135d57eb3"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "build.rs",
+      "origin": "published-crate:winapi-i686-pc-windows-gnu@0.4.0/build.rs",
+      "sha256": "4344ce95f51197e1377429cd9ef7a8e3f97d39546776705857991f2f9416f545"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "i686/build.rs",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/i686/build.rs",
+      "sha256": "4344ce95f51197e1377429cd9ef7a8e3f97d39546776705857991f2f9416f545"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "src/lib.rs",
+      "origin": "published-crate:winapi-i686-pc-windows-gnu@0.4.0/src/lib.rs",
+      "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "i686/src/lib.rs",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/i686/src/lib.rs",
+      "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "LICENSE-MIT",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/LICENSE-MIT",
+      "sha256": "5b19674a1db628a475850a131956ed49521b744e3dda8f5a94141f9aba681219"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "build.rs",
+      "origin": "published-crate:winapi-i686-pc-windows-gnu@0.4.0/build.rs",
+      "sha256": "4344ce95f51197e1377429cd9ef7a8e3f97d39546776705857991f2f9416f545"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "src/lib.rs",
+      "origin": "published-crate:winapi-i686-pc-windows-gnu@0.4.0/src/lib.rs",
+      "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "LICENSE-APACHE",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/LICENSE-APACHE",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "build.rs",
+      "origin": "published-crate:winapi-i686-pc-windows-gnu@0.4.0/build.rs",
+      "sha256": "4344ce95f51197e1377429cd9ef7a8e3f97d39546776705857991f2f9416f545"
+    },
+    {
+      "package": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "src/lib.rs",
+      "origin": "published-crate:winapi-i686-pc-windows-gnu@0.4.0/src/lib.rs",
+      "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "Cargo.toml.orig",
+      "origin": "published-crate:winapi-x86_64-pc-windows-gnu@0.4.0/Cargo.toml.orig",
+      "sha256": "d158846cdb1259d606bfbeb050e386484cb18f14db41478568114eddb76ec43e"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "x86_64/Cargo.toml",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/x86_64/Cargo.toml",
+      "sha256": "d158846cdb1259d606bfbeb050e386484cb18f14db41478568114eddb76ec43e"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "build.rs",
+      "origin": "published-crate:winapi-x86_64-pc-windows-gnu@0.4.0/build.rs",
+      "sha256": "b4ab421e1dc98159dd4440813cdaf7d9ea98278324bc6118d0f7cf378933f371"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "x86_64/build.rs",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/x86_64/build.rs",
+      "sha256": "b4ab421e1dc98159dd4440813cdaf7d9ea98278324bc6118d0f7cf378933f371"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "src/lib.rs",
+      "origin": "published-crate:winapi-x86_64-pc-windows-gnu@0.4.0/src/lib.rs",
+      "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "x86_64/src/lib.rs",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/x86_64/src/lib.rs",
+      "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "LICENSE-MIT",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/LICENSE-MIT",
+      "sha256": "5b19674a1db628a475850a131956ed49521b744e3dda8f5a94141f9aba681219"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "build.rs",
+      "origin": "published-crate:winapi-x86_64-pc-windows-gnu@0.4.0/build.rs",
+      "sha256": "b4ab421e1dc98159dd4440813cdaf7d9ea98278324bc6118d0f7cf378933f371"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "src/lib.rs",
+      "origin": "published-crate:winapi-x86_64-pc-windows-gnu@0.4.0/src/lib.rs",
+      "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "LICENSE-APACHE",
+      "origin": "https://raw.githubusercontent.com/retep998/winapi-rs/9497609ef44cc9bcd16cd2411c0ee6ccaf5483aa/LICENSE-APACHE",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "build.rs",
+      "origin": "published-crate:winapi-x86_64-pc-windows-gnu@0.4.0/build.rs",
+      "sha256": "b4ab421e1dc98159dd4440813cdaf7d9ea98278324bc6118d0f7cf378933f371"
+    },
+    {
+      "package": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "path": "src/lib.rs",
+      "origin": "published-crate:winapi-x86_64-pc-windows-gnu@0.4.0/src/lib.rs",
+      "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    }
+  ]
+}

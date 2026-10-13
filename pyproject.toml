@@ -1,8 +1,8 @@
 [build-system]
 requires = [
     "hatchling",
-    "hatch-js",
-    "hatch-rs",
+    "hatch-js>=0.1.4",
+    "hatch-rs>=0.4.3",
 ]
 build-backend = "hatchling.build"
 
@@ -48,8 +48,8 @@ develop = [
     "check-dist",
     "cibuildwheel",
     "codespell",
-    "hatch-js",
-    "hatch-rs",
+    "hatch-js>=0.1.4",
+    "hatch-rs>=0.4.3",
     "hatchling",
     "mdformat",
     "mdformat-tables>=1",
@@ -121,17 +121,21 @@ before-all = """
 curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=stable --profile=minimal -y
 rustup target add aarch64-unknown-linux-gnu
 rustup target add x86_64-unknown-linux-gnu
+cargo install cargo-bundle-licenses --version 4.2.0 --locked
+bash {project}/scripts/setup-linux-wheel-node.sh
 """
 before-build = "cargo clean --manifest-path {package}/Cargo.toml && rm -f {package}/fsspec_browser/*.so"
-environment = {PATH="$HOME/.cargo/bin:$PATH", CARGO_TERM_COLOR="always", SKIP_HATCH_JS="1" }
+environment = {PATH="/opt/fsspec-browser-node/bin:$HOME/.cargo/bin:$PATH", CARGO_TERM_COLOR="always", CI="true" }
 skip = "*i686* *musllinux*"
 
 [tool.cibuildwheel.macos]
-environment = {PATH="$HOME/.cargo/bin:$PATH", CARGO_TERM_COLOR="always", MACOS_DEPLOYMENT_TARGET=11.0}
+before-all = "cargo install cargo-bundle-licenses --version 4.2.0 --locked"
+environment = {PATH="$HOME/.cargo/bin:$PATH", CARGO_TERM_COLOR="always", MACOSX_DEPLOYMENT_TARGET=11.0}
 archs = "arm64"
 
 [tool.cibuildwheel.windows]
-environment = {PATH="$UserProfile\\.cargo\bin;$PATH", CARGO_TERM_COLOR="always"}
+before-all = "cargo install cargo-bundle-licenses --version 4.2.0 --locked"
+environment = {PATH="$USERPROFILE\\.cargo\\bin;$PATH", CARGO_TERM_COLOR="always"}
 skip = "*win32 *arm64"
 
 
@@ -169,17 +173,27 @@ targets = [
     "fsspec_browser/extension/cdn/index.js",
 ]
 
+[tool.hatch.build.hooks.hatch-js.licenses]
+destination = "fsspec_browser/licenses/pnpm.json"
+production-only = true
+
 [tool.hatch.build.hooks.hatch-rs]
 verbose = true
 abi3 = true
 module = "fsspec_browser"
 path = "."
 
+[tool.hatch.build.hooks.hatch-rs.licenses]
+destination = "fsspec_browser/licenses/cargo.json"
+previous = "rust/license-overrides.json"
+
 [tool.hatch.build.targets.sdist]
+artifacts = []
 packages = [
     "fsspec_browser",
     "js",
     "rust",
+    "scripts",
     "Cargo.toml",
     "Cargo.lock",
 ]
@@ -188,6 +202,7 @@ exclude = [
     "fsspec_browser/*.dylib",
     "fsspec_browser/*.so",
     "fsspec_browser/extension",
+    "fsspec_browser/licenses/*.json",
     "js/dist",
     "js/node_modules",
     "rust/Makefile",

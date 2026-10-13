@@ -143,6 +143,7 @@ Untitled*.ipynb
 fsspec_browser/extension
 fsspec_browser/nbextension
 fsspec_browser/labextension
+fsspec_browser/licenses/*.json
 
 # Emscripten SDK (locally installed)
 emsdk
