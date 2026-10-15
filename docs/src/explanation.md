@@ -19,8 +19,7 @@ ownership of authentication, path rules, metadata, and query behavior.
 
 Listings and metadata are normally cheap compared with downloading an object or
 materializing a database relation. For that reason, selecting an entry first displays its
-metadata. Remote file previews require an explicit action, and every preview has byte or
-row limits.
+metadata. Remote file previews require an explicit action, and preview paths use byte or row limits appropriate to their format.
 
 Database relations remain directory-like so users can browse columns, indexes, and
 constraints. The browser recognizes relation metadata and requests a bounded data view
@@ -41,7 +40,8 @@ concerns from leaking into storage backends.
 
 Directory paging limits how much metadata the UI presents at once. Preview paging limits
 rows, while the byte limit bounds generic file reads. These controls serve responsiveness
-and resource safety; they are not query correctness guarantees.
+and resource use. A row page does not necessarily bound backend reads, and the byte
+option does not cap every decoder or backend cache.
 
 Database backends can make paging efficient by pushing `limit` and `offset` into a query.
 Generic files may still require sequential decoding to reach a later page. The same UI

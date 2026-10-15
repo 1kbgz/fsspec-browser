@@ -1,17 +1,21 @@
-# API
+# Python API reference
 
-The public Python surface is intentionally small. Most users should prefer the `fsspec-browser` and `fsspec-browser-web` command-line tools; these functions exist for embedding or testing the launchers and web server.
+## Terminal entry point
 
-## Terminal Entrypoint
+`run(argv=None)` passes arguments to the Rust terminal browser and returns `0` on
+success. `None` uses `sys.argv[1:]`. `main(argv=None)` catches exceptions, writes
+the message to standard error, and returns `1` on failure.
 
 ```{eval-rst}
 .. automodule:: fsspec_browser.browser
    :members: run, main
 ```
 
-## Web Entrypoint And Helpers
+## Web server and helpers
 
 ```{eval-rst}
 .. automodule:: fsspec_browser.web
-   :members: BrowserState, BrowserServer, create_state, create_server, list_entries, preview_file, download_file, run, main
+   :members: BrowserState, BrowserServer, create_state, create_server, list_entries, preview_file, preview_query, download_file, run, main
 ```
+
+The [command-line reference](cli.md) describes session defaults and preview limits.
