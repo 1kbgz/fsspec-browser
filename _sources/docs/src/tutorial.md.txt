@@ -5,7 +5,7 @@ their structured contents without writing application code.
 
 ## Before you start
 
-Install `fsspec-browser` in a Python 3.11 or newer environment:
+Install `fsspec-browser` in a Python 3.10 or newer environment:
 
 ```console
 python -m pip install fsspec-browser
@@ -50,19 +50,16 @@ Open that address in a web browser. The file tree shows `scores.csv` and `status
 ## Preview the CSV table
 
 Select `scores.csv`, then choose **Preview**. The preview pane shows two columns and two
-rows. The server reads only the bounded preview requested by the UI.
+rows. The preview contains Ada with score 10 and Grace with score 12.
 
 ## Preview JSON
 
-Select `status.json`, then choose **Preview**. The preview pane shows formatted JSON rather
-than an unstructured byte string.
+Select `status.json`, then choose **Preview**. The preview pane shows formatted JSON with `generated` set to `true` and `rows` set to `2`.
 
 ## Stop the server
 
 Return to the terminal and press `Ctrl-C`.
 
-## What you built
-
-You browsed a local filesystem and rendered CSV and JSON through bounded previews. Use the
+Use the
 [web guide](web.md) to connect remote filesystems and control limits, or learn [why the
 browser separates filesystem access from rendering](explanation.md).

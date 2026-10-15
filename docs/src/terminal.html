@@ -3,10 +3,10 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Web" href="web.html"><link rel="prev" title="Preview local data in the web browser" href="tutorial.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="How to connect the web browser" href="web.html"><link rel="prev" title="Preview local data in the web browser" href="tutorial.html">
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
-        <title>Terminal - fsspec-browser v0.3.0</title>
+        <title>How to browse from the terminal - fsspec-browser v0.3.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
@@ -198,11 +198,15 @@
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="how-to-build.html">How to build from source</a></li>
 <li class="toctree-l1"><a class="reference internal" href="tutorial.html">Preview local data in the web browser</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Terminal</a></li>
-<li class="toctree-l1"><a class="reference internal" href="web.html">Web</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">How to browse from the terminal</a></li>
+<li class="toctree-l1"><a class="reference internal" href="web.html">How to connect the web browser</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Command-line reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Python API reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="explanation.html">Why browsing and previewing are separate operations</a></li>
-<li class="toctree-l1"><a class="reference internal" href="api.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licenses.html">License bundle reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../rust/LICENSES.html">Cargo license overrides</a></li>
 </ul>
 
 </div>
@@ -241,106 +245,52 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section class="tex2jax_ignore mathjax_ignore" id="terminal">
-<h1>Terminal<a class="headerlink" href="#terminal" title="Link to this heading">¶</a></h1>
-<p><code class="docutils literal notranslate"><span class="pre">fsspec-browser</span></code> starts the terminal browser. It is useful for quick inspection from a shell, SSH session, or local development environment.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>fsspec-browser<span class="w"> </span>/tmp
-fsspec-browser<span class="w"> </span>local-rs:///tmp
-fsspec-browser<span class="w"> </span>s3-rs://bucket/path<span class="w"> </span>-o<span class="w"> </span><span class="nv">endpoint_url</span><span class="o">=</span>https://...
-fsspec-browser<span class="w"> </span>s3://bucket/path<span class="w"> </span>-o<span class="w"> </span><span class="nv">key</span><span class="o">=</span>...<span class="w"> </span>-o<span class="w"> </span><span class="nv">secret</span><span class="o">=</span>...
+          <section class="tex2jax_ignore mathjax_ignore" id="how-to-browse-from-the-terminal">
+<h1>How to browse from the terminal<a class="headerlink" href="#how-to-browse-from-the-terminal" title="Link to this heading">¶</a></h1>
+<p>Install the browser:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">python -m pip install fsspec-browser</span>
 </pre></div>
 </div>
-<p>Omit the path to enter backend details interactively.</p>
-<section id="supported-locations">
-<h2>Supported Locations<a class="headerlink" href="#supported-locations" title="Link to this heading">¶</a></h2>
-<p>Plain local paths and <code class="docutils literal notranslate"><span class="pre">local-rs://</span></code> URLs use the native local backend. <code class="docutils literal notranslate"><span class="pre">s3-rs://</span></code> and
-<code class="docutils literal notranslate"><span class="pre">s3://</span></code> URLs use the native S3 backend. Any other protocol registered in the active
-Python environment is loaded through fsspec and the <code class="docutils literal notranslate"><span class="pre">fsspec-rs</span></code> Python bridge.</p>
-<p>Install the backend package required by the URL before starting the browser. For example,
-install <code class="docutils literal notranslate"><span class="pre">fsspec-db</span></code> for <code class="docutils literal notranslate"><span class="pre">db+sqlite://</span></code> or <code class="docutils literal notranslate"><span class="pre">gcsfs</span></code> for <code class="docutils literal notranslate"><span class="pre">gs://</span></code>.</p>
-<p>Storage options are passed with repeated <code class="docutils literal notranslate"><span class="pre">-o</span></code> or <code class="docutils literal notranslate"><span class="pre">--storage-option</span></code> flags:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>fsspec-browser<span class="w"> </span>s3-rs://bucket/path<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-o<span class="w"> </span><span class="nv">endpoint_url</span><span class="o">=</span>https://s3.example.com<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-o<span class="w"> </span><span class="nv">key</span><span class="o">=</span>ACCESS_KEY<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-o<span class="w"> </span><span class="nv">secret</span><span class="o">=</span>SECRET_KEY
+<section id="open-a-storage-root">
+<h2>Open a storage root<a class="headerlink" href="#open-a-storage-root" title="Link to this heading">¶</a></h2>
+<p>Pass a local path or S3 URL:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">fsspec-browser /tmp</span>
+<span class="go">fsspec-browser s3://bucket/path</span>
 </pre></div>
 </div>
-<p>Useful S3 option names include <code class="docutils literal notranslate"><span class="pre">endpoint_url</span></code>, <code class="docutils literal notranslate"><span class="pre">region</span></code>, <code class="docutils literal notranslate"><span class="pre">key</span></code>, <code class="docutils literal notranslate"><span class="pre">access_key_id</span></code>, <code class="docutils literal notranslate"><span class="pre">secret</span></code>, <code class="docutils literal notranslate"><span class="pre">secret_access_key</span></code>, <code class="docutils literal notranslate"><span class="pre">token</span></code>, <code class="docutils literal notranslate"><span class="pre">session_token</span></code>, <code class="docutils literal notranslate"><span class="pre">skip_signature</span></code>, and <code class="docutils literal notranslate"><span class="pre">allow_http</span></code>.</p>
-</section>
-<section id="navigation">
-<h2>Navigation<a class="headerlink" href="#navigation" title="Link to this heading">¶</a></h2>
-<div class="table-wrapper colwidths-auto docutils container">
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Key</p></th>
-<th class="head"><p>Action</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">j</span></code>, <code class="docutils literal notranslate"><span class="pre">Down</span></code></p></td>
-<td><p>Move down</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">Up</span></code></p></td>
-<td><p>Move up</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Enter</span></code>, <code class="docutils literal notranslate"><span class="pre">l</span></code>, <code class="docutils literal notranslate"><span class="pre">Right</span></code></p></td>
-<td><p>Enter selected directory</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">h</span></code>, <code class="docutils literal notranslate"><span class="pre">Left</span></code>, <code class="docutils literal notranslate"><span class="pre">Backspace</span></code></p></td>
-<td><p>Go to parent directory</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Space</span></code></p></td>
-<td><p>Expand or collapse a directory</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PageUp</span></code>, <code class="docutils literal notranslate"><span class="pre">PageDown</span></code></p></td>
-<td><p>Move by a page</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">g</span></code>, <code class="docutils literal notranslate"><span class="pre">Home</span></code></p></td>
-<td><p>Move to top</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">G</span></code>, <code class="docutils literal notranslate"><span class="pre">End</span></code></p></td>
-<td><p>Move to bottom</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">p</span></code></p></td>
-<td><p>Preview selected file</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">d</span></code></p></td>
-<td><p>Download selected file</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">r</span></code></p></td>
-<td><p>Refresh current directory</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">n</span></code></p></td>
-<td><p>Start a new session</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">q</span></code>, <code class="docutils literal notranslate"><span class="pre">Esc</span></code>, <code class="docutils literal notranslate"><span class="pre">Ctrl-C</span></code></p></td>
-<td><p>Quit</p></td>
-</tr>
-</tbody>
-</table>
+<p>Omit the path to enter connection details interactively. For other protocols,
+install their fsspec backend in the same environment first:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">python -m pip install gcsfs</span>
+<span class="go">fsspec-browser gs://bucket/path</span>
+</pre></div>
 </div>
+<p>To connect an S3-compatible service, pass repeated storage options:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">fsspec-browser s3-rs://bucket/path \</span>
+<span class="go">  -o endpoint_url=https://s3.example.com \</span>
+<span class="go">  -o region=us-east-1</span>
+</pre></div>
+</div>
+<p>Supply credentials through your backend’s configuration or storage options.
+See <a class="reference internal" href="cli.html"><span class="std std-doc">Command-line reference</span></a> for accepted native S3 option names.</p>
 </section>
-<section id="previews">
-<h2>Previews<a class="headerlink" href="#previews" title="Link to this heading">¶</a></h2>
-<p>Local files can be previewed as you browse. Remote files require <code class="docutils literal notranslate"><span class="pre">p</span></code> before bytes are read, so selecting an object does not automatically download data.</p>
-<p>Raw and text preview reads are bounded by <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span></code>; default is 100 MiB. JSON
-previews are pretty-printed when the complete preview is valid JSON. Truncated JSON stays
-raw.</p>
-<p>Arrow IPC (<code class="docutils literal notranslate"><span class="pre">.arrow</span></code> and <code class="docutils literal notranslate"><span class="pre">.ipc</span></code>) and Parquet (<code class="docutils literal notranslate"><span class="pre">.parquet</span></code> and <code class="docutils literal notranslate"><span class="pre">.pq</span></code>) previews render as tables.
-Their decoding uses <code class="docutils literal notranslate"><span class="pre">fsspec-data</span></code> with explicit row and decoded Arrow-memory bounds. Change
-the number of rows per page with <code class="docutils literal notranslate"><span class="pre">--preview-rows</span></code>; scrolling near the end loads the next
-page.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>fsspec-browser<span class="w"> </span>/tmp<span class="w"> </span>--preview-bytes<span class="w"> </span><span class="m">1048576</span><span class="w"> </span>--preview-rows<span class="w"> </span><span class="m">20</span>
+<section id="navigate-and-preview">
+<h2>Navigate and preview<a class="headerlink" href="#navigate-and-preview" title="Link to this heading">¶</a></h2>
+<p>Use arrows or <code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code> to select entries, <code class="docutils literal notranslate"><span class="pre">Enter</span></code> to enter a directory, and
+<code class="docutils literal notranslate"><span class="pre">Backspace</span></code> to go to its parent. Press <code class="docutils literal notranslate"><span class="pre">p</span></code> to request a remote preview.</p>
+<p>Press <code class="docutils literal notranslate"><span class="pre">Ctrl-A</span></code>, then <code class="docutils literal notranslate"><span class="pre">Right</span></code>, to focus the preview. Use arrows to scroll it, then
+<code class="docutils literal notranslate"><span class="pre">Ctrl-A</span></code>, <code class="docutils literal notranslate"><span class="pre">Left</span></code>, to return to the browser. For Arrow IPC or Parquet tables, scroll
+near the bottom to load another page.</p>
+<p>Set preview and directory limits for the session:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">fsspec-browser /tmp --preview-bytes 1048576 --preview-rows 20 --page-size 500</span>
 </pre></div>
 </div>
 </section>
-<section id="paging-and-downloads">
-<h2>Paging And Downloads<a class="headerlink" href="#paging-and-downloads" title="Link to this heading">¶</a></h2>
-<p>Directory entries are loaded in pages. Change page size with <code class="docutils literal notranslate"><span class="pre">--page-size</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>fsspec-browser<span class="w"> </span>s3-rs://bucket/path<span class="w"> </span>--page-size<span class="w"> </span><span class="m">500</span>
-</pre></div>
-</div>
-<p>Downloads are written under the current working directory using a relative path derived from the selected file URL.</p>
+<section id="download-and-refresh">
+<h2>Download and refresh<a class="headerlink" href="#download-and-refresh" title="Link to this heading">¶</a></h2>
+<p>Press <code class="docutils literal notranslate"><span class="pre">d</span></code> to download the selected file under the current working directory.
+Press <code class="docutils literal notranslate"><span class="pre">r</span></code> to refresh the selected directory level, <code class="docutils literal notranslate"><span class="pre">n</span></code> to start another session,
+and <code class="docutils literal notranslate"><span class="pre">q</span></code> to quit.</p>
+<p>The <a class="reference internal" href="cli.html"><span class="std std-doc">command-line reference</span></a> lists all keys and exact preview limits.</p>
 </section>
 </section>
 
@@ -354,7 +304,7 @@ page.</p>
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Web</div>
+                <div class="title">How to connect the web browser</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -399,11 +349,10 @@ page.</p>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Terminal</a><ul>
-<li><a class="reference internal" href="#supported-locations">Supported Locations</a></li>
-<li><a class="reference internal" href="#navigation">Navigation</a></li>
-<li><a class="reference internal" href="#previews">Previews</a></li>
-<li><a class="reference internal" href="#paging-and-downloads">Paging And Downloads</a></li>
+<li><a class="reference internal" href="#">How to browse from the terminal</a><ul>
+<li><a class="reference internal" href="#open-a-storage-root">Open a storage root</a></li>
+<li><a class="reference internal" href="#navigate-and-preview">Navigate and preview</a></li>
+<li><a class="reference internal" href="#download-and-refresh">Download and refresh</a></li>
 </ul>
 </li>
 </ul>

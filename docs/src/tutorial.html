@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Terminal" href="terminal.html"><link rel="prev" title="fsspec-browser" href="../../index.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="How to browse from the terminal" href="terminal.html"><link rel="prev" title="How to build from source" href="how-to-build.html">
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
         <title>Preview local data in the web browser - fsspec-browser v0.3.0</title>
@@ -198,11 +198,15 @@
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="how-to-build.html">How to build from source</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Preview local data in the web browser</a></li>
-<li class="toctree-l1"><a class="reference internal" href="terminal.html">Terminal</a></li>
-<li class="toctree-l1"><a class="reference internal" href="web.html">Web</a></li>
+<li class="toctree-l1"><a class="reference internal" href="terminal.html">How to browse from the terminal</a></li>
+<li class="toctree-l1"><a class="reference internal" href="web.html">How to connect the web browser</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Command-line reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Python API reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="explanation.html">Why browsing and previewing are separate operations</a></li>
-<li class="toctree-l1"><a class="reference internal" href="api.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licenses.html">License bundle reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../rust/LICENSES.html">Cargo license overrides</a></li>
 </ul>
 
 </div>
@@ -247,7 +251,7 @@
 their structured contents without writing application code.</p>
 <section id="before-you-start">
 <h2>Before you start<a class="headerlink" href="#before-you-start" title="Link to this heading">¶</a></h2>
-<p>Install <code class="docutils literal notranslate"><span class="pre">fsspec-browser</span></code> in a Python 3.11 or newer environment:</p>
+<p>Install <code class="docutils literal notranslate"><span class="pre">fsspec-browser</span></code> in a Python 3.10 or newer environment:</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">python -m pip install fsspec-browser</span>
 </pre></div>
 </div>
@@ -283,20 +287,16 @@ their structured contents without writing application code.</p>
 <section id="preview-the-csv-table">
 <h2>Preview the CSV table<a class="headerlink" href="#preview-the-csv-table" title="Link to this heading">¶</a></h2>
 <p>Select <code class="docutils literal notranslate"><span class="pre">scores.csv</span></code>, then choose <strong>Preview</strong>. The preview pane shows two columns and two
-rows. The server reads only the bounded preview requested by the UI.</p>
+rows. The preview contains Ada with score 10 and Grace with score 12.</p>
 </section>
 <section id="preview-json">
 <h2>Preview JSON<a class="headerlink" href="#preview-json" title="Link to this heading">¶</a></h2>
-<p>Select <code class="docutils literal notranslate"><span class="pre">status.json</span></code>, then choose <strong>Preview</strong>. The preview pane shows formatted JSON rather
-than an unstructured byte string.</p>
+<p>Select <code class="docutils literal notranslate"><span class="pre">status.json</span></code>, then choose <strong>Preview</strong>. The preview pane shows formatted JSON with <code class="docutils literal notranslate"><span class="pre">generated</span></code> set to <code class="docutils literal notranslate"><span class="pre">true</span></code> and <code class="docutils literal notranslate"><span class="pre">rows</span></code> set to <code class="docutils literal notranslate"><span class="pre">2</span></code>.</p>
 </section>
 <section id="stop-the-server">
 <h2>Stop the server<a class="headerlink" href="#stop-the-server" title="Link to this heading">¶</a></h2>
 <p>Return to the terminal and press <code class="docutils literal notranslate"><span class="pre">Ctrl-C</span></code>.</p>
-</section>
-<section id="what-you-built">
-<h2>What you built<a class="headerlink" href="#what-you-built" title="Link to this heading">¶</a></h2>
-<p>You browsed a local filesystem and rendered CSV and JSON through bounded previews. Use the
+<p>Use the
 <a class="reference internal" href="web.html"><span class="std std-doc">web guide</span></a> to connect remote filesystems and control limits, or learn <a class="reference internal" href="explanation.html"><span class="std std-doc">why the
 browser separates filesystem access from rendering</span></a>.</p>
 </section>
@@ -312,18 +312,18 @@ browser separates filesystem access from rendering</span></a>.</p>
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Terminal</div>
+                <div class="title">How to browse from the terminal</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="../../index.html">
+          <a class="prev-page" href="how-to-build.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Home</div>
+                <div class="title">How to build from source</div>
                 
               </div>
             </a>
@@ -364,7 +364,6 @@ browser separates filesystem access from rendering</span></a>.</p>
 <li><a class="reference internal" href="#preview-the-csv-table">Preview the CSV table</a></li>
 <li><a class="reference internal" href="#preview-json">Preview JSON</a></li>
 <li><a class="reference internal" href="#stop-the-server">Stop the server</a></li>
-<li><a class="reference internal" href="#what-you-built">What you built</a></li>
 </ul>
 </li>
 </ul>

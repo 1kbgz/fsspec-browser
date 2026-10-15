@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="API" href="api.html"><link rel="prev" title="Web" href="web.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="License bundle reference" href="licenses.html"><link rel="prev" title="Python API reference" href="api.html">
 
     <!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
         <title>Why browsing and previewing are separate operations - fsspec-browser v0.3.0</title>
@@ -198,11 +198,15 @@
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
   <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="how-to-build.html">How to build from source</a></li>
 <li class="toctree-l1"><a class="reference internal" href="tutorial.html">Preview local data in the web browser</a></li>
-<li class="toctree-l1"><a class="reference internal" href="terminal.html">Terminal</a></li>
-<li class="toctree-l1"><a class="reference internal" href="web.html">Web</a></li>
+<li class="toctree-l1"><a class="reference internal" href="terminal.html">How to browse from the terminal</a></li>
+<li class="toctree-l1"><a class="reference internal" href="web.html">How to connect the web browser</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Command-line reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Python API reference</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Why browsing and previewing are separate operations</a></li>
-<li class="toctree-l1"><a class="reference internal" href="api.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licenses.html">License bundle reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../rust/LICENSES.html">Cargo license overrides</a></li>
 </ul>
 
 </div>
@@ -260,8 +264,7 @@ ownership of authentication, path rules, metadata, and query behavior.</p>
 <h2>Selection does not imply an unbounded read<a class="headerlink" href="#selection-does-not-imply-an-unbounded-read" title="Link to this heading">¶</a></h2>
 <p>Listings and metadata are normally cheap compared with downloading an object or
 materializing a database relation. For that reason, selecting an entry first displays its
-metadata. Remote file previews require an explicit action, and every preview has byte or
-row limits.</p>
+metadata. Remote file previews require an explicit action, and preview paths use byte or row limits appropriate to their format.</p>
 <p>Database relations remain directory-like so users can browse columns, indexes, and
 constraints. The browser recognizes relation metadata and requests a bounded data view
 when previewing, rather than treating the directory as a conventional file.</p>
@@ -280,7 +283,8 @@ concerns from leaking into storage backends.</p>
 <h2>Pagination protects interactive work<a class="headerlink" href="#pagination-protects-interactive-work" title="Link to this heading">¶</a></h2>
 <p>Directory paging limits how much metadata the UI presents at once. Preview paging limits
 rows, while the byte limit bounds generic file reads. These controls serve responsiveness
-and resource safety; they are not query correctness guarantees.</p>
+and resource use. A row page does not necessarily bound backend reads, and the byte
+option does not cap every decoder or backend cache.</p>
 <p>Database backends can make paging efficient by pushing <code class="docutils literal notranslate"><span class="pre">limit</span></code> and <code class="docutils literal notranslate"><span class="pre">offset</span></code> into a query.
 Generic files may still require sequential decoding to reach a later page. The same UI
 gesture therefore has backend-dependent cost even though its result looks consistent.</p>
@@ -300,23 +304,23 @@ gesture therefore has backend-dependent cost even though its result looks consis
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="api.html">
+          <a class="next-page" href="licenses.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">API</div>
+                <div class="title">License bundle reference</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="web.html">
+          <a class="prev-page" href="api.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Web</div>
+                <div class="title">Python API reference</div>
                 
               </div>
             </a>
