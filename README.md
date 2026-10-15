@@ -1,91 +1,31 @@
 # fsspec-browser
 
-Terminal and web browser for fsspec-backed filesystems.
+Browse fsspec filesystems in a terminal or local web UI.
 
 [![Build Status](https://github.com/1kbgz/fsspec-browser/actions/workflows/build.yaml/badge.svg?branch=main&event=push)](https://github.com/1kbgz/fsspec-browser/actions/workflows/build.yaml)
 [![codecov](https://codecov.io/gh/1kbgz/fsspec-browser/branch/main/graph/badge.svg)](https://codecov.io/gh/1kbgz/fsspec-browser)
 [![License](https://img.shields.io/github/license/1kbgz/fsspec-browser)](https://github.com/1kbgz/fsspec-browser)
 [![PyPI](https://img.shields.io/pypi/v/fsspec-browser.svg)](https://pypi.python.org/pypi/fsspec-browser)
 
-## Overview
+`fsspec-browser` lists files, shows metadata, previews data, and downloads objects.
+The terminal application supports native local and S3 access plus a Python fsspec
+bridge. The web server uses installed Python fsspec backends.
 
-`fsspec-browser` lets you inspect local files, object stores, and other fsspec-compatible filesystems from a terminal UI or a local web UI. It is built for browsing, previewing, and downloading files without writing one-off scripts.
+![Web browser](docs/img/browser.png)
 
-![fsspec-browser web UI](docs/img/browser.png)
-
-![fsspec-browser terminal UI](docs/img/terminal.png)
-
-## Install
-
-```bash
-pip install fsspec-browser
-```
-
-Install any fsspec backend packages your URLs require, such as S3, GCS, SSH, or cloud vendor integrations.
-
-## Terminal Browser
-
-```bash
-fsspec-browser /tmp
-fsspec-browser s3-rs://my-bucket/path -o endpoint_url=https://...
-```
-
-Use `Ctrl-A`, then `Left` or `Right`, to focus the browser or preview pane. Arrow keys operate on the focused pane: they navigate files in the browser and scroll vertically or horizontally in the preview. `Enter` opens directories, `p` previews remote files, and `d` downloads the selected file. `Ctrl-U`/`Ctrl-D` and `H`/`L` remain preview scrolling shortcuts. Arrow IPC and Parquet render as tables through `fsspec-data`; scrolling near the end loads another `--preview-rows` page.
-
-## Web Browser
-
-```bash
-fsspec-browser-web /tmp --host 127.0.0.1 --port 8765
-fsspec-browser-web --host 127.0.0.1 --port 8765
-```
-
-When started without a path, the web UI opens a connection form. File previews are explicit and bounded by `--preview-bytes`. Database relations and columns, CSV, JSON/JSONL, and Parquet render as tables. Scrolling the preview loads the next `--preview-rows` page.
-
-### Browse a DuckDB database
-
-Install the database extra and create the Superstore fixture:
-
-```bash
-pip install 'fsspec-browser[database]'
-python examples/create_superstore_duckdb.py
-```
-
-Start the web browser with the DuckDB database as a storage option:
-
-```bash
-fsspec-browser-web db+duckdb:// \
-  -o database=examples/superstore.duckdb \
-  --preview-rows 20
-```
-
-Tables and stored views remain directory-like database relations, but are explicitly
-previewable as bounded row sets. Use **SQL Preview** for an arbitrary read query.
-
-## Build from source
-
-Install Rust, Node.js 22, pnpm 10.28.2, and the pinned Cargo license collector before building:
-
-```bash
-cargo install cargo-bundle-licenses --version 4.2.0 --locked
-make develop
-make build
-```
-
-Wheels include the pnpm production dependency inventory and Cargo dependency license texts under
-`fsspec_browser/licenses`. Both bundles preserve original texts and notices. The pnpm inventory
-excludes development tools; review it again if JavaScript build inputs change. Cargo collection
-includes nonhost dependencies and is not a linked-code-only inventory.
-
-Missing license texts fail the build. The [Cargo override reference](rust/LICENSES.md) records
-provisional source-backed texts that require human review before shipping. Collection does not
-certify compliance or cover Python dependencies and separately vendored assets.
-
-`SKIP_HATCH_JS` also skips pnpm license collection. Distribution builds must run both hooks;
-the Linux wheel containers install Node/pnpm rather than skipping the JavaScript hook.
+![Terminal browser](docs/img/terminal.png)
 
 ## Documentation
 
-- [Preview local data](docs/src/tutorial.md): guided first use.
-- [Use the terminal](docs/src/terminal.md) or [web browser](docs/src/web.md): task-oriented guides.
-- [Understand browsing and previews](docs/src/explanation.md): design and backend boundaries.
-- [Python API reference](docs/src/api.md): embedding and server helpers.
+[Preview local data](docs/src/tutorial.md) is a guided first session.
+[Use the terminal](docs/src/terminal.md) or [connect the web browser](docs/src/web.md)
+for remote storage, database previews, and downloads.
+
+The [command-line reference](docs/src/cli.md) lists flags, defaults, keys, and
+preview limits. The [Python API reference](docs/src/api.md) covers embedding.
+Read [Why browsing and previewing are separate operations](docs/src/explanation.md)
+for backend boundaries and paging costs.
+
+For source installations, follow [How to build from source](docs/src/how-to-build.md).
+[License bundle reference](docs/src/licenses.md) describes the included inventories
+and their coverage.

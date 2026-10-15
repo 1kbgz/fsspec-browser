@@ -260,10 +260,14 @@ section-order = [
 title = "fsspec-browser"
 root = "README.md"
 pages = [
+    "docs/src/how-to-build.md",
     "docs/src/tutorial.md",
     "docs/src/terminal.md",
     "docs/src/web.md",
-    "docs/src/explanation.md",
+    "docs/src/cli.md",
     "docs/src/api.md",
+    "docs/src/explanation.md",
+    "docs/src/licenses.md",
+    "rust/LICENSES.md",
 ]
 use-autoapi = false

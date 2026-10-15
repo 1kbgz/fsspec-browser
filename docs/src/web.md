@@ -1,67 +1,56 @@
-# Web
+# How to connect the web browser
 
-`fsspec-browser-web` starts a local HTTP server and serves the bundled browser UI.
+Install the browser and the backend packages required by your URLs:
 
-```bash
+```console
+python -m pip install fsspec-browser s3fs
+```
+
+## Connect a filesystem
+
+Start a local session or pass a remote URL:
+
+```console
 fsspec-browser-web /tmp --host 127.0.0.1 --port 8765
 fsspec-browser-web s3://bucket/path -o anon=true
 ```
 
-Omit the path to start without an active session. The UI will show a connection form where you can enter a path or URL and storage options.
+To choose a connection in the UI, omit the path:
 
-```bash
+```console
 fsspec-browser-web --host 127.0.0.1 --port 8765
 ```
 
-## Filesystems
+Enter the path or URL and backend storage options in the connection form.
+Use repeated `-o KEY=VALUE` arguments when supplying storage options at launch.
 
-The web browser uses fsspec. Local paths work with the default install. Cloud and remote URLs may need their normal fsspec backend packages installed in the same Python environment.
+## Preview and download
 
-Storage options are passed as repeated `-o` or `--storage-option` flags:
+Expand directories by clicking them. Scroll to reveal further entries. Select a
+file for its metadata, then choose **Preview** or double-click it to read data.
+Scroll near the end of a table preview to request another row page.
 
-```bash
-fsspec-browser-web s3://bucket/path \
-  -o anon=false \
-  -o key=ACCESS_KEY \
-  -o secret=SECRET_KEY
+Use **Refresh** to reload the selected directory level and **Download** to copy a
+file. Set the download destination and preview limits at launch:
+
+```console
+fsspec-browser-web /tmp --download-root downloads \
+  --preview-rows 20 --preview-bytes 1048576
 ```
 
-## Browser Controls
+## Browse a DuckDB database
 
-Click directories to expand them. Large directories load more entries as you scroll near the end.
+From a source checkout, install the database extra and create its fixture:
 
-Selecting a file shows details and metadata. Use the `Preview` button or double-click a file to read preview bytes. This keeps remote file reads explicit.
+```console
+python -m pip install 'fsspec-browser[database]'
+python examples/create_superstore_duckdb.py
+fsspec-browser-web db+duckdb:// \
+  -o database=examples/superstore.duckdb --preview-rows 20
+```
 
-Use `Refresh` to reload the selected directory level. Use `Download` to copy the selected file to the configured download root.
+Select a table or view to browse metadata; choose **Preview** for rows. Use
+**SQL Preview** for a read query when the backend supports `query()`.
 
-## Options
-
-| Option                             | Default     | Description                                |
-| ---------------------------------- | ----------- | ------------------------------------------ |
-| `path`                             | none        | fsspec URL or local path to browse         |
-| `-o`, `--storage-option KEY=VALUE` | none        | Backend option; may be repeated            |
-| `--host`                           | `127.0.0.1` | Server host                                |
-| `--port`                           | `0`         | Server port; `0` chooses an available port |
-| `--page-size`                      | `256`       | Entries revealed per directory page        |
-| `--preview-bytes`                  | `1048576`   | Maximum bytes read for file preview        |
-| `--preview-rows`                   | `20`        | Rows returned per structured preview page  |
-| `--download-root`                  | `.`         | Directory where downloads are written      |
-| `--no-open`                        | off         | Do not open a browser tab                  |
-
-## Previews
-
-Raw and text previews read at most `--preview-bytes + 1` bytes so they can be marked as
-truncated. Binary files are identified without rendering bytes as text. Complete `.json`
-previews are pretty-printed when valid. CSV, JSON/JSONL, Arrow IPC (`.arrow` and `.ipc`),
-Parquet, and database relation previews render as tables. Arrow IPC and Parquet decoding
-uses `fsspec-data` with explicit row and decoded Arrow-memory bounds. Scrolling near the
-end of a table requests another `--preview-rows` page.
-
-When the active filesystem provides `query()`, the UI also offers SQL Preview. It accepts
-`SELECT` and `WITH` statements and wraps them in a row-limited outer query.
-
-Metadata shown in the UI comes from fsspec listings and file info, including common created, modified, accessed, ETag, and content type fields when the backend provides them.
-
-## Downloads
-
-Downloads are copied through fsspec into `--download-root`. The local target path is derived from the display path while stripping protocol parts and unsafe `.` or `..` path components.
+For your own database, pass its file path with `-o database=...`. Consult the
+[command-line reference](cli.md) for defaults and the scope of preview limits.
