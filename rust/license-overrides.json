@@ -79,7 +79,7 @@
     },
     {
       "package_name": "mac_address",
-      "package_version": "1.2.0",
+      "package_version": "1.2.1",
       "repository": "https://github.com/repnop/mac_address",
       "license": "MIT OR Apache-2.0",
       "licenses": [

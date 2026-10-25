@@ -52,6 +52,7 @@ develop = [
     "hatch-rs>=0.4.3",
     "hatchling",
     "mdformat",
+    "mdformat-frontmatter",
     "mdformat-tables>=1",
     "pytest",
     "pytest-cov",
@@ -142,7 +143,7 @@ skip = "*win32 *arm64"
 [tool.coverage.run]
 branch = true
 omit = [
-    "fsspec_browser/tests/integration/",
+    "fsspec_browser/tests/integration/*",
 ]
 
 [tool.coverage.report]
@@ -156,9 +157,6 @@ fail_under = 50
 
 [tool.hatch.build]
 artifacts = [
-    "fsspec_browser/*.dll",
-    "fsspec_browser/*.dylib",
-    "fsspec_browser/*.so",
     "fsspec_browser/extension",
 ]
 
@@ -198,9 +196,10 @@ packages = [
     "Cargo.lock",
 ]
 exclude = [
-    "fsspec_browser/*.dll",
-    "fsspec_browser/*.dylib",
-    "fsspec_browser/*.so",
+    "*.dll",
+    "*.dylib",
+    "*.so",
+    "*.pyd",
     "fsspec_browser/extension",
     "fsspec_browser/licenses/*.json",
     "js/dist",
@@ -210,11 +209,14 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel]
+artifacts = [
+    "fsspec_browser/*.dll",
+    "fsspec_browser/*.dylib",
+    "fsspec_browser/*.so",
+    "fsspec_browser/extension/**/*",
+]
 packages = [
     "fsspec_browser",
-]
-artifacts = [
-    "fsspec_browser/extension/**/*",
 ]
 exclude = [
     "js",
