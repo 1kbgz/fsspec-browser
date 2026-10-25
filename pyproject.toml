@@ -213,13 +213,10 @@ artifacts = [
     "fsspec_browser/*.dll",
     "fsspec_browser/*.dylib",
     "fsspec_browser/*.so",
-    "fsspec_browser/extension",
+    "fsspec_browser/extension/**/*",
 ]
 packages = [
     "fsspec_browser",
-]
-artifacts = [
-    "fsspec_browser/extension/**/*",
 ]
 exclude = [
     "js",
