@@ -187,7 +187,9 @@ materializing a database relation. For that reason, selecting an entry first dis
 metadata. Remote file previews require an explicit action, and preview paths use byte or row limits appropriate to their format.</p>
 <p>Database relations remain directory-like so users can browse columns, indexes, and
 constraints. The browser recognizes relation metadata and requests a bounded data view
-when previewing, rather than treating the directory as a conventional file.</p>
+when previewing, rather than treating the directory as a conventional file. Kafka
+partitions from fsspec-kafka work the same way: previewing a partition directory pages
+through its messages.</p>
 </section>
 <section id="rendering-belongs-to-the-frontend">
 <h2>Rendering belongs to the frontend<a class="headerlink" href="#rendering-belongs-to-the-frontend" title="Link to this heading">¶</a></h2>
@@ -206,6 +208,8 @@ rows, while the byte limit bounds generic file reads. These controls serve respo
 and resource use. A row page does not necessarily bound backend reads, and the byte
 option does not cap every decoder or backend cache.</p>
 <p>Database backends can make paging efficient by pushing <code class="docutils literal notranslate"><span class="pre">limit</span></code> and <code class="docutils literal notranslate"><span class="pre">offset</span></code> into a query.
+Kafka partitions continue from an opaque token holding the next message’s offset, because
+compaction leaves gaps that make row counts and offsets differ.
 Generic files may still require sequential decoding to reach a later page. The same UI
 gesture therefore has backend-dependent cost even though its result looks consistent.</p>
 </section>

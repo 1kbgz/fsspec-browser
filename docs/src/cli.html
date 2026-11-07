@@ -332,8 +332,8 @@ selected URL.</p>
 Directories expand on click and reveal more entries while scrolling. <strong>Refresh</strong>
 reloads the selected directory level.</p>
 <p>Raw previews request at most <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span> <span class="pre">+</span> <span class="pre">1</span></code> bytes to detect truncation.
-Complete <code class="docutils literal notranslate"><span class="pre">.json</span></code> previews are formatted. CSV, JSON/JSONL, Arrow IPC, Parquet, and
-database relations can render as tables. Arrow IPC and Parquet use row and decoded
+Complete <code class="docutils literal notranslate"><span class="pre">.json</span></code> previews are formatted. CSV, JSON/JSONL, Arrow IPC, Parquet,
+database relations, and Kafka partitions can render as tables. Arrow IPC and Parquet use row and decoded
 Arrow-memory bounds. The byte option is not a universal cap on backend traffic or
 on all structured decoders’ allocations.</p>
 <p><strong>SQL Preview</strong> is available when the filesystem provides <code class="docutils literal notranslate"><span class="pre">query()</span></code>. It accepts
