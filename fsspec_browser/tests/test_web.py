@@ -376,7 +376,7 @@ def test_preview_embedded_schema_formats_use_fsspec_data(tmp_path, monkeypatch, 
     preview = web.preview_file(state, str(path))
     continuation = preview["continuation"]
     assert continuation is not None
-    next_preview = web.preview_file(state, str(path), offset=continuation["value"])
+    next_preview = web.preview_file(state, str(path), offset=int(continuation["value"]))
 
     assert preview["columns"] == ["name", "score"]
     assert preview["rows"] == [{"name": "ada", "score": 2}, {"name": "grace", "score": 3}]
@@ -387,6 +387,43 @@ def test_preview_embedded_schema_formats_use_fsspec_data(tmp_path, monkeypatch, 
     assert hasattr(calls[0][0], "read")
     assert calls[0][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 3}
     assert calls[1][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 5}
+
+
+def test_preview_kafka_partition_pages_by_offset_token(tmp_path):
+    from fsspec_browser import web
+
+    # Offsets 3, 5, 6 and 9 remain after compaction.
+    messages = {offset: {"partition": 0, "offset": offset, "value": f"v{offset}"} for offset in (3, 5, 6, 9)}
+
+    class FakeKafkaFs:
+        protocol = ("kafka",)
+
+        def info(self, path):
+            return {"name": path, "type": "directory", "size": 0, "partition": "0", "low": "3", "high": "10"}
+
+        def cat_file(self, path):
+            name, query = path.split("?")
+            assert name == "orders/0.jsonl"
+            params = dict(part.split("=") for part in query.split("&"))
+            start, limit = int(params["start"]), int(params["limit"])
+            rows = [message for offset, message in messages.items() if offset >= start][:limit]
+            return "".join(json.dumps(row) + "\n" for row in rows).encode()
+
+        def unstrip_protocol(self, path):
+            return f"kafka://{path}"
+
+    fs = FakeKafkaFs()
+    assert web._normalize_entry(fs, fs.info("orders/0"))["previewable"] is True
+    assert web._normalize_entry(object(), fs.info("orders/0"))["previewable"] is False
+
+    state = web.BrowserState(fs, "", "kafka://", tmp_path, tmp_path, 1024, 256, 2)
+    first = web.preview_file(state, "orders/0/")
+    assert [row["offset"] for row in first["rows"]] == [3, 5]
+    assert first["continuation"] == {"kind": "token", "value": "6"}
+
+    second = web.preview_file(state, "orders/0", token=str(first["continuation"]["value"]))
+    assert [row["offset"] for row in second["rows"]] == [6, 9]
+    assert second["continuation"] is None
 
 
 def test_preview_database_relation_and_sql(tmp_path):

@@ -43,8 +43,8 @@ _TIMESTAMP_KEYS = {"atime", "created", "ctime", "modified", "mtime"}
 
 
 class PreviewContinuation(TypedDict):
-    kind: Literal["offset"]
-    value: int
+    kind: Literal["offset", "token"]
+    value: int | str
 
 
 class PreviewPage(TypedDict):
@@ -145,6 +145,12 @@ def _is_directory(entry: dict[str, Any]) -> bool:
     return kind in {"directory", "dir"} or bool(entry.get("isdir"))
 
 
+def _is_kafka_partition(fs: Any, entry: dict[str, Any]) -> bool:
+    protocol = getattr(fs, "protocol", ())
+    protocols = (protocol,) if isinstance(protocol, str) else protocol
+    return "kafka" in protocols and _is_directory(entry) and "partition" in entry
+
+
 def _format_metadata_value(key: str, value: Any) -> str | None:
     if value is None:
         return None
@@ -183,7 +189,7 @@ def _normalize_entry(fs: Any, entry: dict[str, Any] | str) -> dict[str, Any]:
         "type": item_type,
         "size": entry.get("size"),
         "metadata": _metadata(entry),
-        "previewable": item_type == "file" or entry.get("kind") in {"table", "view"},
+        "previewable": item_type == "file" or entry.get("kind") in {"table", "view"} or _is_kafka_partition(fs, entry),
     }
 
 
@@ -321,11 +327,20 @@ def _preview_embedded_schema(
     return _table_payload(state, path, info, rows, offset)
 
 
-def preview_file(state: BrowserState, path: str, *, max_bytes: int | None = None, offset: int = 0) -> PreviewPage:
+def preview_file(
+    state: BrowserState,
+    path: str,
+    *,
+    max_bytes: int | None = None,
+    offset: int = 0,
+    token: str | None = None,
+) -> PreviewPage:
     info = state.fs.info(path)
     if _is_directory(info):
         if info.get("kind") in {"table", "view"}:
             return _preview_relation(state, path, info, offset)
+        if _is_kafka_partition(state.fs, info):
+            return _preview_kafka_partition(state, path, info, token)
         raise IsADirectoryError(path)
 
     display_path = _display_path(state.fs, path)
@@ -430,6 +445,17 @@ def _preview_relation(state: BrowserState, path: str, info: dict[str, Any], offs
     return result
 
 
+def _preview_kafka_partition(state: BrowserState, path: str, info: dict[str, Any], token: str | None) -> PreviewPage:
+    # Compaction leaves gaps in offsets, so pages continue from the next message's offset.
+    start = int(token) if token is not None else int(info["low"])
+    data = state.fs.cat_file(f"{path.rstrip('/')}.jsonl?start={start}&limit={state.preview_rows + 1}")
+    rows = [json.loads(line) for line in data.decode("utf-8").splitlines() if line]
+    result = _table_payload(state, path, info, rows, 0, allow_continuation=False)
+    if len(rows) > state.preview_rows:
+        result["continuation"] = PreviewContinuation(kind="token", value=str(rows[state.preview_rows]["offset"]))
+    return result
+
+
 def _download_target(display_path: str, download_root: Path) -> Path:
     parsed = urlparse(display_path)
     parts: list[str] = []
@@ -509,7 +535,8 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
                     self._send_json({"error": "missing path"}, HTTPStatus.BAD_REQUEST)
                     return
                 offset = int(query.get("offset", ["0"])[0])
-                self._send_json(preview_file(state, path, offset=max(offset, 0)))
+                token = query.get("token", [None])[0]
+                self._send_json(preview_file(state, path, offset=max(offset, 0), token=token))
             else:
                 self._send_static(parsed.path)
         except Exception as exc:  # noqa: BLE001

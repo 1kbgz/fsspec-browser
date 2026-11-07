@@ -18,10 +18,9 @@ type ApiList = {
   path: string;
 };
 
-type ApiPreviewContinuation = {
-  kind: "offset";
-  value: number;
-};
+type ApiPreviewContinuation =
+  | { kind: "offset"; value: number }
+  | { kind: "token"; value: string };
 
 type ApiPreview = {
   columns: string[];
@@ -625,8 +624,13 @@ const loadMorePreview = async () => {
   if (!item) return;
   previewLoadingMore = true;
   try {
+    const { continuation } = activePreview;
+    const next =
+      continuation.kind === "token"
+        ? `token=${encodeURIComponent(continuation.value)}`
+        : `offset=${continuation.value}`;
     const page = await fetchJson<ApiPreview>(
-      `api/preview?${queryPath(item.path)}&offset=${activePreview.continuation.value}`,
+      `api/preview?${queryPath(item.path)}&${next}`,
     );
     activePreview = {
       ...page,
