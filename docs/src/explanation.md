@@ -23,7 +23,9 @@ metadata. Remote file previews require an explicit action, and preview paths use
 
 Database relations remain directory-like so users can browse columns, indexes, and
 constraints. The browser recognizes relation metadata and requests a bounded data view
-when previewing, rather than treating the directory as a conventional file.
+when previewing, rather than treating the directory as a conventional file. Kafka
+partitions from fsspec-kafka work the same way: previewing a partition directory pages
+through its messages.
 
 ## Rendering belongs to the frontend
 
@@ -44,6 +46,8 @@ and resource use. A row page does not necessarily bound backend reads, and the b
 option does not cap every decoder or backend cache.
 
 Database backends can make paging efficient by pushing `limit` and `offset` into a query.
+Kafka partitions continue from an opaque token holding the next message's offset, because
+compaction leaves gaps that make row counts and offsets differ.
 Generic files may still require sequential decoding to reach a later page. The same UI
 gesture therefore has backend-dependent cost even though its result looks consistent.
 

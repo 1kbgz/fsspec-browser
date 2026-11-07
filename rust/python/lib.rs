@@ -13,6 +13,7 @@ struct PythonBackend {
     root_marker: String,
     url: String,
     database: bool,
+    kafka: bool,
 }
 
 impl PythonBackend {
@@ -31,6 +32,7 @@ impl PythonBackend {
                 root_marker,
                 url: session.url.clone(),
                 database: protocol.starts_with("db+"),
+                kafka: protocol == "kafka",
             },
             start,
         ))
@@ -71,6 +73,7 @@ impl BrowserBackend for PythonBackend {
                     info.extra.get("kind").map(String::as_str),
                     Some("table" | "view")
                 ))
+            || (self.kafka && is_kafka_partition(info))
     }
 
     fn preview(
@@ -79,6 +82,12 @@ impl BrowserBackend for PythonBackend {
         continuation: Option<&PreviewContinuation>,
         limit: usize,
     ) -> FsResult<PreviewPage> {
+        if self.kafka {
+            let info = self.fs.info(path)?;
+            if is_kafka_partition(&info) {
+                return self.kafka_page(path, &info, continuation);
+            }
+        }
         let offset = match continuation {
             None => 0,
             Some(PreviewContinuation::Offset(offset)) => *offset,
@@ -124,6 +133,54 @@ impl BrowserBackend for PythonBackend {
             format!("{}::{path}", self.url)
         }
     }
+}
+
+impl PythonBackend {
+    /// Up to 100 messages from a partition. Compaction leaves gaps in offsets, so the
+    /// continuation token is the offset of the next message rather than a row count.
+    fn kafka_page(
+        &self,
+        path: &str,
+        info: &fsspec_rs::FileInfo,
+        continuation: Option<&PreviewContinuation>,
+    ) -> FsResult<PreviewPage> {
+        let start = match continuation {
+            None => info.extra["low"].clone(),
+            Some(PreviewContinuation::Token(token)) => token.clone(),
+            Some(PreviewContinuation::Offset(_)) => {
+                return Err(FsError::InvalidArgument(
+                    "Kafka partitions continue from tokens, not offsets".into(),
+                ));
+            }
+        };
+        let data_path = format!(
+            "{}.jsonl?start={start}&limit=101",
+            path.trim_end_matches('/')
+        );
+        let data = self.fs.cat_file(&data_path, None, None)?;
+        let text = String::from_utf8(data).map_err(|err| FsError::Other(err.to_string()))?;
+        let mut rows: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        let next = match rows.get(100) {
+            Some(row) => {
+                let message: serde_json::Value =
+                    serde_json::from_str(row).map_err(|err| FsError::Other(err.to_string()))?;
+                Some(PreviewContinuation::Token(message["offset"].to_string()))
+            }
+            None => None,
+        };
+        rows.truncate(100);
+        Ok(PreviewPage {
+            bytes: format!("[\n{}\n]", rows.join(",\n")).into_bytes(),
+            continuation: next,
+        })
+    }
+}
+
+fn is_kafka_partition(info: &fsspec_rs::FileInfo) -> bool {
+    info.is_dir() && info.extra.contains_key("partition")
 }
 
 fn jsonl_page(data: Vec<u8>, offset: usize) -> FsResult<PreviewPage> {

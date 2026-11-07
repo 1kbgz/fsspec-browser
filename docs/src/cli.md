@@ -84,8 +84,8 @@ Directories expand on click and reveal more entries while scrolling. **Refresh**
 reloads the selected directory level.
 
 Raw previews request at most `--preview-bytes + 1` bytes to detect truncation.
-Complete `.json` previews are formatted. CSV, JSON/JSONL, Arrow IPC, Parquet, and
-database relations can render as tables. Arrow IPC and Parquet use row and decoded
+Complete `.json` previews are formatted. CSV, JSON/JSONL, Arrow IPC, Parquet,
+database relations, and Kafka partitions can render as tables. Arrow IPC and Parquet use row and decoded
 Arrow-memory bounds. The byte option is not a universal cap on backend traffic or
 on all structured decoders' allocations.
 
