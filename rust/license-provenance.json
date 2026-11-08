@@ -17,37 +17,37 @@
     },
     {
       "package": "alloc-stdlib",
-      "version": "0.2.4",
+      "version": "0.3.0",
       "path": "LICENSE",
-      "origin": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+      "origin": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE",
       "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
     },
     {
       "package": "brotli",
-      "version": "7.0.0",
+      "version": "9.1.1",
       "path": "LICENSE.BSD-3-Clause",
-      "origin": "published-crate:brotli@7.0.0/LICENSE.BSD-3-Clause",
+      "origin": "published-crate:brotli@9.1.1/LICENSE.BSD-3-Clause",
       "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
     },
     {
       "package": "flatbuffers",
-      "version": "24.12.23",
+      "version": "25.12.19",
       "path": "LICENSE",
-      "origin": "https://raw.githubusercontent.com/google/flatbuffers/a2cd1ea3b6d3fee220106b5fed3f7ce8da9eb757/LICENSE",
+      "origin": "https://raw.githubusercontent.com/google/flatbuffers/7e163021e59cca4f8e1e35a7c828b5c6b7915953/LICENSE",
       "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
     },
     {
       "package": "fsspec_data",
-      "version": "0.2.3",
+      "version": "0.5.0",
       "path": "LICENSE",
-      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-data/ec4ea4f311e7b15af087a74911668c5a387d172b/LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-data/65f88dfb6c1a181bf54c5d228b06e4d6be653959/LICENSE",
       "sha256": "7cb572d4a9535d81e1b9187f31d5e60c5459cb4d47f4c61b330d25da14002650"
     },
     {
       "package": "fsspec_rs",
-      "version": "0.1.5",
+      "version": "0.1.7",
       "path": "LICENSE",
-      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/7d85945bae87e5439a048572b3def6ff8c857587/LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/0baabf643b289ec8d7d583abc379fda966b5cba2/LICENSE",
       "sha256": "342d89813d1d45d0ab63dd908ae9a43130f3c5ea52b2dd55726bda3deb7009ef"
     },
     {
@@ -301,6 +301,27 @@
       "path": "src/lib.rs",
       "origin": "published-crate:winapi-x86_64-pc-windows-gnu@0.4.0/src/lib.rs",
       "sha256": "79212a91f610f8a77aa6ed4cc77212c2531eeb35630388bf07323cc328fcca42"
+    },
+    {
+      "package": "brotli",
+      "version": "9.1.1",
+      "path": "LICENSE.MIT",
+      "origin": "published-crate:brotli@9.1.1/LICENSE.MIT",
+      "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+    },
+    {
+      "package": "crc-catalog",
+      "version": "2.5.0",
+      "path": "LICENSES/Apache-2.0.txt",
+      "origin": "published-crate:crc-catalog@2.5.0/LICENSES/Apache-2.0.txt",
+      "sha256": "d3cdb764b98283ee7c3a3cea8d374e2a2957322374378d1f3263f4d512741fc3"
+    },
+    {
+      "package": "crc-catalog",
+      "version": "2.5.0",
+      "path": "LICENSES/MIT.txt",
+      "origin": "published-crate:crc-catalog@2.5.0/LICENSES/MIT.txt",
+      "sha256": "5ef8fcfb6cccec8fcae043c834099a60c8b7406408db576e026d2b7e67dc5cf5"
     }
   ]
 }
