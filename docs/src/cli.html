@@ -158,6 +158,9 @@
   <li class="fd-toc-item" data-depth="2">
     <a href="#web-previews-and-downloads">Web previews and downloads</a>
   </li>
+  <li class="fd-toc-item" data-depth="1">
+    <a href="#table-schemas">Table schemas</a>
+  </li>
 </ul>
 </div>
   </div>
@@ -199,7 +202,11 @@ Other registered protocols use the Python fsspec bridge.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">20</span></code></p></td>
 <td><p>Rows per tabular preview page.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">-h</span></code>, <code class="docutils literal notranslate"><span class="pre">--help</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--schema</span> <span class="pre">PATTERN=[FORMAT:]URL</span></code></p></td>
+<td><p>none</p></td>
+<td><p>Repeated CSV and JSONL schemas; see below.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">-h</span></code>, <code class="docutils literal notranslate"><span class="pre">--help</span></code></p></td>
 <td><p>off</p></td>
 <td><p>Command help.</p></td>
 </tr>
@@ -267,9 +274,10 @@ preview vertically, and <code class="docutils literal notranslate"><span class="
 <section id="terminal-previews-and-downloads">
 <h3>Terminal previews and downloads<a class="headerlink" href="#terminal-previews-and-downloads" title="Link to this heading">¶</a></h3>
 <p>Local files can preview on selection; remote reads require <code class="docutils literal notranslate"><span class="pre">p</span></code>. Complete JSON is
-pretty-printed; truncated JSON stays raw. Arrow IPC (<code class="docutils literal notranslate"><span class="pre">.arrow</span></code>, <code class="docutils literal notranslate"><span class="pre">.ipc</span></code>) and Parquet
-(<code class="docutils literal notranslate"><span class="pre">.parquet</span></code>, <code class="docutils literal notranslate"><span class="pre">.pq</span></code>) render as tables through <code class="docutils literal notranslate"><span class="pre">fsspec-data</span></code>. Scrolling near the end
-loads another row page.</p>
+pretty-printed; truncated JSON stays raw. Arrow IPC (<code class="docutils literal notranslate"><span class="pre">.arrow</span></code>, <code class="docutils literal notranslate"><span class="pre">.ipc</span></code>), Parquet
+(<code class="docutils literal notranslate"><span class="pre">.parquet</span></code>, <code class="docutils literal notranslate"><span class="pre">.pq</span></code>), CSV (<code class="docutils literal notranslate"><span class="pre">.csv</span></code>), and JSONL (<code class="docutils literal notranslate"><span class="pre">.jsonl</span></code>, <code class="docutils literal notranslate"><span class="pre">.ndjson</span></code>) render as tables
+through <code class="docutils literal notranslate"><span class="pre">fsspec-data</span></code>. Scrolling near the end loads another row page. Terminal sessions
+on bridged Python backends preview files as text.</p>
 <p>Downloads use the current working directory and a relative path derived from the
 selected URL.</p>
 </section>
@@ -316,11 +324,15 @@ selected URL.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">20</span></code></p></td>
 <td><p>Rows returned per structured preview page</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--download-root</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--schema</span> <span class="pre">PATTERN=[FORMAT:]URL</span></code></p></td>
+<td><p>none</p></td>
+<td><p>CSV and JSONL schema; may be repeated</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--download-root</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">.</span></code></p></td>
 <td><p>Directory where downloads are written</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--no-open</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--no-open</span></code></p></td>
 <td><p>off</p></td>
 <td><p>Do not open a browser tab</p></td>
 </tr>
@@ -332,15 +344,34 @@ selected URL.</p>
 Directories expand on click and reveal more entries while scrolling. <strong>Refresh</strong>
 reloads the selected directory level.</p>
 <p>Raw previews request at most <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span> <span class="pre">+</span> <span class="pre">1</span></code> bytes to detect truncation.
-Complete <code class="docutils literal notranslate"><span class="pre">.json</span></code> previews are formatted. CSV, JSON/JSONL, Arrow IPC, Parquet,
-database relations, and Kafka partitions can render as tables. Arrow IPC and Parquet use row and decoded
-Arrow-memory bounds. The byte option is not a universal cap on backend traffic or
+Complete <code class="docutils literal notranslate"><span class="pre">.json</span></code> previews are formatted. CSV, JSONL, Arrow IPC, Parquet, database
+relations, and Kafka partitions can render as tables. CSV, JSONL, Arrow IPC, and Parquet
+decode through <code class="docutils literal notranslate"><span class="pre">fsspec-data</span></code> with row and decoded Arrow-memory bounds. The byte option is not a universal cap on backend traffic or
 on all structured decoders’ allocations.</p>
 <p><strong>SQL Preview</strong> is available when the filesystem provides <code class="docutils literal notranslate"><span class="pre">query()</span></code>. It accepts
 <code class="docutils literal notranslate"><span class="pre">SELECT</span></code> and <code class="docutils literal notranslate"><span class="pre">WITH</span></code> and wraps the query with a row limit.</p>
 <p>Downloads are copied to <code class="docutils literal notranslate"><span class="pre">--download-root</span></code>. Target paths remove protocol parts and
 unsafe <code class="docutils literal notranslate"><span class="pre">.</span></code> or <code class="docutils literal notranslate"><span class="pre">..</span></code> components. Metadata fields depend on the backend.</p>
 </section>
+</section>
+<section id="table-schemas">
+<h2>Table schemas<a class="headerlink" href="#table-schemas" title="Link to this heading">¶</a></h2>
+<p>Both commands decode CSV and JSONL previews with an Arrow schema. By default the schema is
+inferred from the first records, reading at most 1 MiB or <code class="docutils literal notranslate"><span class="pre">--preview-bytes</span></code>, whichever is
+smaller. If inference fails, or later records do not fit the inferred types, the file is
+shown untyped: the web view lists CSV values as strings and the terminal shows raw text.</p>
+<p><code class="docutils literal notranslate"><span class="pre">--schema</span> <span class="pre">PATTERN=[FORMAT:]URL</span></code> gives files whose path matches <code class="docutils literal notranslate"><span class="pre">PATTERN</span></code> a schema instead.
+<code class="docutils literal notranslate"><span class="pre">*</span></code> matches any characters, including <code class="docutils literal notranslate"><span class="pre">/</span></code>, and <code class="docutils literal notranslate"><span class="pre">?</span></code> matches one character. The first
+matching option wins, and decoding errors are reported rather than hidden. <code class="docutils literal notranslate"><span class="pre">FORMAT</span></code> is
+<code class="docutils literal notranslate"><span class="pre">arrow-json</span></code>, <code class="docutils literal notranslate"><span class="pre">arrow-ipc-schema</span></code>, <code class="docutils literal notranslate"><span class="pre">json-schema</span></code>, or <code class="docutils literal notranslate"><span class="pre">avro-schema</span></code>; without it the format
+comes from the schema file’s extension, as in <code class="docutils literal notranslate"><span class="pre">fsspec-data</span></code>.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">fsspec-browser-web s3://bucket/exports \</span>
+<span class="go">  --schema '*/orders/*.csv=json-schema:s3://bucket/schemas/orders.json'</span>
+<span class="go">fsspec-browser /data --schema '*.jsonl=/data/schemas/events.arrow'</span>
+</pre></div>
+</div>
+<p>Schemas are resolved when the command starts. The web command reads schema URLs through
+fsspec; the terminal command reads local schema files.</p>
 </section>
 </section>
 
@@ -391,6 +422,9 @@ unsafe <code class="docutils literal notranslate"><span class="pre">.</span></co
   </li>
   <li class="fd-toc-item" data-depth="2">
     <a href="#web-previews-and-downloads">Web previews and downloads</a>
+  </li>
+  <li class="fd-toc-item" data-depth="1">
+    <a href="#table-schemas">Table schemas</a>
   </li>
 </ul>
 

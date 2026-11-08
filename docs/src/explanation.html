@@ -199,7 +199,8 @@ The web renderer can use scrollable tables and request another page near the end
 current one.</p>
 <p>CSV, JSON, JSONL, and Parquet need format-aware renderers to be useful, but decoding them
 does not change filesystem semantics. Keeping rendering in the browser prevents display
-concerns from leaking into storage backends.</p>
+concerns from leaking into storage backends. Decoding itself belongs to <code class="docutils literal notranslate"><span class="pre">fsspec-data</span></code>, which
+also infers or resolves the schemas that CSV and JSONL lack.</p>
 </section>
 <section id="pagination-protects-interactive-work">
 <h2>Pagination protects interactive work<a class="headerlink" href="#pagination-protects-interactive-work" title="Link to this heading">¶</a></h2>

@@ -562,6 +562,7 @@ window.runMermaid = runMermaid;</script>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">fnmatch</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">ipaddress</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">itertools</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
@@ -576,11 +577,14 @@ window.runMermaid = runMermaid;</script>
 <span class="kn">from</span><span class="w"> </span><span class="nn">http</span><span class="w"> </span><span class="kn">import</span> <span class="n">HTTPStatus</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">http.server</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseHTTPRequestHandler</span><span class="p">,</span> <span class="n">ThreadingHTTPServer</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">TypedDict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">TypedDict</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_qs</span><span class="p">,</span> <span class="n">unquote</span><span class="p">,</span> <span class="n">urlparse</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">fsspec</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">fsspec_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_REGISTRY</span><span class="p">,</span> <span class="n">DataFormat</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fsspec_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_REGISTRY</span><span class="p">,</span> <span class="n">DataFormat</span><span class="p">,</span> <span class="n">SchemaFormat</span><span class="p">,</span> <span class="n">SchemaRef</span><span class="p">,</span> <span class="n">resolve_schema</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pa</span>
 
 <span class="n">MAX_PREVIEW_BYTES</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">*</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span>
 <span class="n">_METADATA_KEYS</span> <span class="o">=</span> <span class="p">(</span>
@@ -631,7 +635,8 @@ window.runMermaid = runMermaid;</script>
     <span class="n">download_root</span><span class="p">:</span> <span class="n">Path</span>
     <span class="n">preview_bytes</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">page_size</span><span class="p">:</span> <span class="nb">int</span>
-    <span class="n">preview_rows</span><span class="p">:</span> <span class="nb">int</span></div>
+    <span class="n">preview_rows</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">table_schemas</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">Schema</span><span class="p">],</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span></div>
 
 
 
@@ -644,6 +649,7 @@ window.runMermaid = runMermaid;</script>
     <span class="n">page_size</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">preview_bytes</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">preview_rows</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">table_schemas</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">Schema</span><span class="p">],</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">token</span><span class="p">:</span> <span class="nb">str</span></div>
 
 
@@ -677,6 +683,7 @@ window.runMermaid = runMermaid;</script>
     <span class="n">preview_bytes</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">MAX_PREVIEW_BYTES</span><span class="p">,</span>
     <span class="n">preview_rows</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
     <span class="n">storage_options</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_schemas</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">Schema</span><span class="p">]]</span> <span class="o">=</span> <span class="p">(),</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BrowserState</span><span class="p">:</span>
     <span class="n">fs</span><span class="p">,</span> <span class="n">root_path</span> <span class="o">=</span> <span class="n">fsspec</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">url_to_fs</span><span class="p">(</span><span class="n">root_url</span><span class="p">,</span> <span class="o">**</span><span class="p">(</span><span class="n">storage_options</span> <span class="ow">or</span> <span class="p">{}))</span>
     <span class="n">root_path</span> <span class="o">=</span> <span class="n">root_path</span> <span class="ow">or</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">fs</span><span class="p">,</span> <span class="s2">"root_marker"</span><span class="p">,</span> <span class="s2">"/"</span><span class="p">)</span>
@@ -689,6 +696,7 @@ window.runMermaid = runMermaid;</script>
         <span class="n">preview_bytes</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">preview_bytes</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
         <span class="n">preview_rows</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">preview_rows</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
         <span class="n">page_size</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">page_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="n">table_schemas</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">table_schemas</span><span class="p">),</span>
     <span class="p">)</span>
 
 
@@ -845,6 +853,27 @@ window.runMermaid = runMermaid;</script>
     <span class="p">)</span>
 
 
+<span class="c1"># Bytes and records read to infer a CSV or JSONL schema.</span>
+<span class="n">_INFERENCE_BYTES</span> <span class="o">=</span> <span class="mi">1024</span> <span class="o">*</span> <span class="mi">1024</span>
+<span class="n">_INFERENCE_RECORDS</span> <span class="o">=</span> <span class="mi">1000</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_preview_text_table</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">BrowserState</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">format</span><span class="p">:</span> <span class="n">DataFormat</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PreviewPage</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">fs</span><span class="o">.</span><span class="n">_strip_protocol</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">schema</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">schema</span> <span class="k">for</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">schema</span> <span class="ow">in</span> <span class="n">state</span><span class="o">.</span><span class="n">table_schemas</span> <span class="k">if</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">fnmatchcase</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">pattern</span><span class="p">)),</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">schema</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_preview_decoded</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="nb">format</span><span class="p">,</span> <span class="n">schema</span><span class="p">)</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">_INFERENCE_BYTES</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">preview_bytes</span><span class="p">)</span>
+    <span class="n">sample</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">fs</span><span class="o">.</span><span class="n">cat_file</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">size</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">schema</span> <span class="o">=</span> <span class="n">DEFAULT_REGISTRY</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">format</span><span class="p">)</span><span class="o">.</span><span class="n">infer_schema</span><span class="p">(</span><span class="n">sample</span><span class="p">,</span> <span class="n">max_records</span><span class="o">=</span><span class="n">_INFERENCE_RECORDS</span><span class="p">,</span> <span class="n">truncated</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">sample</span><span class="p">)</span> <span class="o">==</span> <span class="n">size</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_preview_decoded</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="nb">format</span><span class="p">,</span> <span class="n">schema</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="c1"># Later records may not fit the inferred schema, and JSONL lines may not be objects.</span>
+        <span class="n">untyped</span> <span class="o">=</span> <span class="n">_preview_delimited</span> <span class="k">if</span> <span class="nb">format</span> <span class="o">==</span> <span class="n">DataFormat</span><span class="o">.</span><span class="n">CSV</span> <span class="k">else</span> <span class="n">_preview_jsonl</span>
+        <span class="k">return</span> <span class="n">untyped</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_preview_delimited</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">BrowserState</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PreviewPage</span><span class="p">:</span>
     <span class="k">with</span> <span class="n">state</span><span class="o">.</span><span class="n">fs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">"rt"</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
         <span class="n">reader</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">DictReader</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
@@ -861,12 +890,13 @@ window.runMermaid = runMermaid;</script>
     <span class="k">return</span> <span class="n">_table_payload</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">rows</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_preview_embedded_schema</span><span class="p">(</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_preview_decoded</span><span class="p">(</span>
     <span class="n">state</span><span class="p">:</span> <span class="n">BrowserState</span><span class="p">,</span>
     <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
     <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="nb">format</span><span class="p">:</span> <span class="n">DataFormat</span><span class="p">,</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="n">pa</span><span class="o">.</span><span class="n">Schema</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PreviewPage</span><span class="p">:</span>
     <span class="n">wanted</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">preview_rows</span> <span class="o">+</span> <span class="mi">1</span>
     <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
@@ -874,6 +904,7 @@ window.runMermaid = runMermaid;</script>
     <span class="k">with</span> <span class="n">state</span><span class="o">.</span><span class="n">fs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
         <span class="n">batches</span> <span class="o">=</span> <span class="n">DEFAULT_REGISTRY</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">format</span><span class="p">)</span><span class="o">.</span><span class="n">iter_batches</span><span class="p">(</span>
             <span class="n">file</span><span class="p">,</span>
+            <span class="n">schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span>
             <span class="n">batch_size</span><span class="o">=</span><span class="n">wanted</span><span class="p">,</span>
             <span class="n">row_limit</span><span class="o">=</span><span class="n">offset</span> <span class="o">+</span> <span class="n">wanted</span><span class="p">,</span>
             <span class="n">byte_limit</span><span class="o">=</span><span class="n">state</span><span class="o">.</span><span class="n">preview_bytes</span><span class="p">,</span>
@@ -914,13 +945,13 @@ window.runMermaid = runMermaid;</script>
         <span class="n">values</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">_table_payload</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"value"</span><span class="p">:</span> <span class="n">value</span><span class="p">}</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">values</span><span class="p">],</span> <span class="n">offset</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">lower_path</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">".csv"</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">_preview_delimited</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_preview_text_table</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">DataFormat</span><span class="o">.</span><span class="n">CSV</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">lower_path</span><span class="o">.</span><span class="n">endswith</span><span class="p">((</span><span class="s2">".jsonl"</span><span class="p">,</span> <span class="s2">".ndjson"</span><span class="p">)):</span>
-        <span class="k">return</span> <span class="n">_preview_jsonl</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_preview_text_table</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">DataFormat</span><span class="o">.</span><span class="n">JSONL</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">lower_path</span><span class="o">.</span><span class="n">endswith</span><span class="p">((</span><span class="s2">".arrow"</span><span class="p">,</span> <span class="s2">".ipc"</span><span class="p">)):</span>
-        <span class="k">return</span> <span class="n">_preview_embedded_schema</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">DataFormat</span><span class="o">.</span><span class="n">ARROW</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_preview_decoded</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">DataFormat</span><span class="o">.</span><span class="n">ARROW</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">lower_path</span><span class="o">.</span><span class="n">endswith</span><span class="p">((</span><span class="s2">".parquet"</span><span class="p">,</span> <span class="s2">".pq"</span><span class="p">)):</span>
-        <span class="k">return</span> <span class="n">_preview_embedded_schema</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">DataFormat</span><span class="o">.</span><span class="n">PARQUET</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_preview_decoded</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">DataFormat</span><span class="o">.</span><span class="n">PARQUET</span><span class="p">)</span>
 
     <span class="n">max_bytes</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">preview_bytes</span> <span class="k">if</span> <span class="n">max_bytes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_bytes</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
     <span class="k">with</span> <span class="n">state</span><span class="o">.</span><span class="n">fs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
@@ -1063,6 +1094,7 @@ window.runMermaid = runMermaid;</script>
     <span class="n">page_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
     <span class="n">preview_bytes</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">MAX_PREVIEW_BYTES</span><span class="p">,</span>
     <span class="n">preview_rows</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
+    <span class="n">table_schemas</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">Schema</span><span class="p">]]</span> <span class="o">=</span> <span class="p">(),</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BrowserServer</span><span class="p">:</span>
     <span class="n">server</span> <span class="o">=</span> <span class="n">BrowserServer</span><span class="p">((</span><span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="p">),</span> <span class="n">BrowserRequestHandler</span><span class="p">)</span>
     <span class="n">server</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">state</span>
@@ -1071,6 +1103,7 @@ window.runMermaid = runMermaid;</script>
     <span class="n">server</span><span class="o">.</span><span class="n">page_size</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">page_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
     <span class="n">server</span><span class="o">.</span><span class="n">preview_bytes</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">preview_bytes</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
     <span class="n">server</span><span class="o">.</span><span class="n">preview_rows</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">preview_rows</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">server</span><span class="o">.</span><span class="n">table_schemas</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">table_schemas</span><span class="p">)</span>
     <span class="n">server</span><span class="o">.</span><span class="n">token</span> <span class="o">=</span> <span class="n">secrets</span><span class="o">.</span><span class="n">token_urlsafe</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">server</span>
 
@@ -1197,6 +1230,7 @@ window.runMermaid = runMermaid;</script>
             <span class="n">preview_bytes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">preview_bytes</span><span class="p">,</span>
             <span class="n">preview_rows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">preview_rows</span><span class="p">,</span>
             <span class="n">storage_options</span><span class="o">=</span><span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">):</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">storage_options</span><span class="o">.</span><span class="n">items</span><span class="p">()},</span>
+            <span class="n">table_schemas</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">table_schemas</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_send_json</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_config_payload</span><span class="p">())</span>
 
@@ -1243,6 +1277,26 @@ window.runMermaid = runMermaid;</script>
     <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">pairs</span><span class="p">)</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_schema_option</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">SchemaRef</span><span class="p">]:</span>
+    <span class="n">pattern</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">url</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s2">"="</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pattern</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">url</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentTypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"schema must be PATTERN=[FORMAT:]URL: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">format</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">rest</span> <span class="o">=</span> <span class="n">url</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s2">":"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">format</span> <span class="ow">in</span> <span class="p">{</span><span class="n">item</span><span class="o">.</span><span class="n">value</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">SchemaFormat</span><span class="p">}</span> <span class="ow">and</span> <span class="n">rest</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">SchemaRef</span><span class="p">(</span><span class="n">rest</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="nb">format</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">SchemaRef</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_table_schemas</span><span class="p">(</span><span class="n">options</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">SchemaRef</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">Schema</span><span class="p">],</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Resolve ``--schema`` references before any file is previewed."""</span>
+    <span class="n">schemas</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">reference</span> <span class="ow">in</span> <span class="n">options</span><span class="p">:</span>
+        <span class="n">resolved</span> <span class="o">=</span> <span class="n">resolve_schema</span><span class="p">(</span><span class="n">reference</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">resolved</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="n">schemas</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">pattern</span><span class="p">,</span> <span class="n">resolved</span><span class="o">.</span><span class="n">schema</span><span class="p">))</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">schemas</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_parse_args</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">Namespace</span><span class="p">:</span>
     <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">prog</span><span class="o">=</span><span class="s2">"fsspec-browser-web"</span><span class="p">)</span>
     <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"path"</span><span class="p">,</span> <span class="n">nargs</span><span class="o">=</span><span class="s2">"?"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"fsspec URL or local path to browse"</span><span class="p">)</span>
@@ -1258,6 +1312,17 @@ window.runMermaid = runMermaid;</script>
     <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--page-size"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"entries revealed per directory page"</span><span class="p">)</span>
     <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--preview-bytes"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">MAX_PREVIEW_BYTES</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"maximum file preview bytes"</span><span class="p">)</span>
     <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--preview-rows"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"maximum database rows per preview"</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--schema"</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">"append"</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="p">[],</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="s2">"PATTERN=[FORMAT:]URL"</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="n">_parse_schema_option</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">"schema for CSV and JSONL files whose path matches PATTERN, where * matches any characters. "</span>
+            <span class="s2">"FORMAT is arrow-json, arrow-ipc-schema, json-schema, or avro-schema. Without a match, the schema is inferred. May be repeated"</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
     <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--host"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"127.0.0.1"</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"host for the local web server"</span><span class="p">)</span>
     <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--port"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"port for the local web server"</span><span class="p">)</span>
     <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">"--download-root"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"."</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"directory where downloads are written"</span><span class="p">)</span>
@@ -1272,6 +1337,7 @@ window.runMermaid = runMermaid;</script>
 
 <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
     <span class="n">args</span> <span class="o">=</span> <span class="n">_parse_args</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span>
+    <span class="n">table_schemas</span> <span class="o">=</span> <span class="n">_table_schemas</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">schema</span><span class="p">)</span>
     <span class="n">state</span> <span class="o">=</span> <span class="p">(</span>
         <span class="n">create_state</span><span class="p">(</span>
             <span class="n">args</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
@@ -1280,6 +1346,7 @@ window.runMermaid = runMermaid;</script>
             <span class="n">preview_bytes</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">preview_bytes</span><span class="p">,</span>
             <span class="n">preview_rows</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">preview_rows</span><span class="p">,</span>
             <span class="n">storage_options</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">storage_options</span><span class="p">,</span>
+            <span class="n">table_schemas</span><span class="o">=</span><span class="n">table_schemas</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">path</span>
         <span class="k">else</span> <span class="kc">None</span>
@@ -1292,6 +1359,7 @@ window.runMermaid = runMermaid;</script>
         <span class="n">page_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">page_size</span><span class="p">,</span>
         <span class="n">preview_bytes</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">preview_bytes</span><span class="p">,</span>
         <span class="n">preview_rows</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">preview_rows</span><span class="p">,</span>
+        <span class="n">table_schemas</span><span class="o">=</span><span class="n">table_schemas</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">host</span><span class="p">,</span> <span class="n">port</span> <span class="o">=</span> <span class="n">server</span><span class="o">.</span><span class="n">server_address</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
     <span class="n">url</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"http://</span><span class="si">{</span><span class="n">host</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">port</span><span class="si">}</span><span class="s2">/"</span>

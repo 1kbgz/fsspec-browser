@@ -9,11 +9,12 @@ These overrides are provisional and require human review before shipping. They d
 the declared license choices or certify compatibility, notice sufficiency, or source-availability
 requirements. Dependency updates with new missing texts fail rather than reusing another version's text.
 
-- alloc-stdlib 0.2.4: repository LICENSE at the published crate's VCS commit.
-- brotli 7.0.0: published LICENSE.BSD-3-Clause.
-- flatbuffers 24.12.23: repository LICENSE at the published crate's VCS commit.
-- fsspec_data 0.2.3: repository LICENSE at the published crate's VCS commit.
-- fsspec_rs and fsspec_rs_bridge 0.1.5: shared repository LICENSE at the published crates' VCS commit.
+- alloc-stdlib 0.3.0: repository LICENSE at the published crate's VCS commit.
+- brotli 9.1.1: published LICENSE.BSD-3-Clause and LICENSE.MIT.
+- crc-catalog 2.5.0: published LICENSES/MIT.txt and LICENSES/Apache-2.0.txt.
+- flatbuffers 25.12.19: repository LICENSE at the published crate's VCS commit.
+- fsspec_data 0.5.0: repository LICENSE at the published crate's VCS commit.
+- fsspec_rs 0.1.7 and fsspec_rs_bridge 0.1.5: shared repository LICENSE at each published crate's VCS commit.
 - mac_address 1.2.0: published LICENSE-APACHE2.0.
 - r-efi 5.3.0 and 6.0.0: complete published AUTHORS, with Apache and GNU LGPL terms appended as described below.
 - ratatui-termina 0.1.0: workspace LICENSE at the published crate's VCS commit.

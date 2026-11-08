@@ -16,6 +16,7 @@ Other registered protocols use the Python fsspec bridge.
 | `--page-size`                      | `256`       | Entries fetched or revealed per page.             |
 | `--preview-bytes`                  | `104857600` | Raw preview bytes or decoded Arrow-memory budget. |
 | `--preview-rows`                   | `20`        | Rows per tabular preview page.                    |
+| `--schema PATTERN=[FORMAT:]URL`    | none        | Repeated CSV and JSONL schemas; see below.        |
 | `-h`, `--help`                     | off         | Command help.                                     |
 
 Native S3 accepts `endpoint_url`, `region`, `key` / `access_key_id`,
@@ -50,9 +51,10 @@ preview vertically, and `H` and `L` scroll it horizontally from either pane.
 ### Terminal previews and downloads
 
 Local files can preview on selection; remote reads require `p`. Complete JSON is
-pretty-printed; truncated JSON stays raw. Arrow IPC (`.arrow`, `.ipc`) and Parquet
-(`.parquet`, `.pq`) render as tables through `fsspec-data`. Scrolling near the end
-loads another row page.
+pretty-printed; truncated JSON stays raw. Arrow IPC (`.arrow`, `.ipc`), Parquet
+(`.parquet`, `.pq`), CSV (`.csv`), and JSONL (`.jsonl`, `.ndjson`) render as tables
+through `fsspec-data`. Scrolling near the end loads another row page. Terminal sessions
+on bridged Python backends preview files as text.
 
 Downloads use the current working directory and a relative path derived from the
 selected URL.
@@ -74,6 +76,7 @@ An omitted path opens a connection form. All sessions use Python fsspec.
 | `--page-size`                      | `256`       | Entries revealed per directory page        |
 | `--preview-bytes`                  | `1048576`   | Maximum bytes read for file preview        |
 | `--preview-rows`                   | `20`        | Rows returned per structured preview page  |
+| `--schema PATTERN=[FORMAT:]URL`    | none        | CSV and JSONL schema; may be repeated      |
 | `--download-root`                  | `.`         | Directory where downloads are written      |
 | `--no-open`                        | off         | Do not open a browser tab                  |
 
@@ -84,9 +87,9 @@ Directories expand on click and reveal more entries while scrolling. **Refresh**
 reloads the selected directory level.
 
 Raw previews request at most `--preview-bytes + 1` bytes to detect truncation.
-Complete `.json` previews are formatted. CSV, JSON/JSONL, Arrow IPC, Parquet,
-database relations, and Kafka partitions can render as tables. Arrow IPC and Parquet use row and decoded
-Arrow-memory bounds. The byte option is not a universal cap on backend traffic or
+Complete `.json` previews are formatted. CSV, JSONL, Arrow IPC, Parquet, database
+relations, and Kafka partitions can render as tables. CSV, JSONL, Arrow IPC, and Parquet
+decode through `fsspec-data` with row and decoded Arrow-memory bounds. The byte option is not a universal cap on backend traffic or
 on all structured decoders' allocations.
 
 **SQL Preview** is available when the filesystem provides `query()`. It accepts
@@ -94,3 +97,25 @@ on all structured decoders' allocations.
 
 Downloads are copied to `--download-root`. Target paths remove protocol parts and
 unsafe `.` or `..` components. Metadata fields depend on the backend.
+
+## Table schemas
+
+Both commands decode CSV and JSONL previews with an Arrow schema. By default the schema is
+inferred from the first records, reading at most 1 MiB or `--preview-bytes`, whichever is
+smaller. If inference fails, or later records do not fit the inferred types, the file is
+shown untyped: the web view lists CSV values as strings and the terminal shows raw text.
+
+`--schema PATTERN=[FORMAT:]URL` gives files whose path matches `PATTERN` a schema instead.
+`*` matches any characters, including `/`, and `?` matches one character. The first
+matching option wins, and decoding errors are reported rather than hidden. `FORMAT` is
+`arrow-json`, `arrow-ipc-schema`, `json-schema`, or `avro-schema`; without it the format
+comes from the schema file's extension, as in `fsspec-data`.
+
+```console
+fsspec-browser-web s3://bucket/exports \
+  --schema '*/orders/*.csv=json-schema:s3://bucket/schemas/orders.json'
+fsspec-browser /data --schema '*.jsonl=/data/schemas/events.arrow'
+```
+
+Schemas are resolved when the command starts. The web command reads schema URLs through
+fsspec; the terminal command reads local schema files.
