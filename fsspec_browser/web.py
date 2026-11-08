@@ -295,7 +295,8 @@ _INFERENCE_RECORDS = 1000
 
 
 def _preview_text_table(state: BrowserState, path: str, info: dict[str, Any], offset: int, format: DataFormat) -> PreviewPage:
-    schema = next((schema for pattern, schema in state.table_schemas if fnmatch.fnmatchcase(path, pattern)), None)
+    name = state.fs._strip_protocol(path)
+    schema = next((schema for pattern, schema in state.table_schemas if fnmatch.fnmatchcase(name, pattern)), None)
     if schema is not None:
         return _preview_decoded(state, path, info, offset, format, schema)
     size = min(_INFERENCE_BYTES, state.preview_bytes)
