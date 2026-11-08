@@ -40,8 +40,8 @@ Use arrows or `j`/`k` to select entries, `Enter` to enter a directory, and
 `Backspace` to go to its parent. Press `p` to request a remote preview.
 
 Press `Ctrl-A`, then `Right`, to focus the preview. Use arrows to scroll it, then
-`Ctrl-A`, `Left`, to return to the browser. For Arrow IPC or Parquet tables, scroll
-near the bottom to load another page.
+`Ctrl-A`, `Left`, to return to the browser. For tables, scroll near the bottom to load
+another page.
 
 Set preview and directory limits for the session:
 
