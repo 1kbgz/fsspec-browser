@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fnmatch
 import ipaddress
 import itertools
 import json
@@ -18,11 +19,14 @@ from datetime import date, datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from urllib.parse import parse_qs, unquote, urlparse
 
 import fsspec
-from fsspec_data import DEFAULT_REGISTRY, DataFormat
+from fsspec_data import DEFAULT_REGISTRY, DataFormat, SchemaFormat, SchemaRef, resolve_schema
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 MAX_PREVIEW_BYTES = 1 * 1024 * 1024
 _METADATA_KEYS = (
@@ -72,6 +76,7 @@ class BrowserState:
     preview_bytes: int
     page_size: int
     preview_rows: int
+    table_schemas: tuple[tuple[str, pa.Schema], ...] = ()
 
 
 class BrowserServer(ThreadingHTTPServer):
@@ -81,6 +86,7 @@ class BrowserServer(ThreadingHTTPServer):
     page_size: int
     preview_bytes: int
     preview_rows: int
+    table_schemas: tuple[tuple[str, pa.Schema], ...]
     token: str
 
 
@@ -113,6 +119,7 @@ def create_state(
     preview_bytes: int = MAX_PREVIEW_BYTES,
     preview_rows: int = 20,
     storage_options: dict[str, str] | None = None,
+    table_schemas: Sequence[tuple[str, pa.Schema]] = (),
 ) -> BrowserState:
     fs, root_path = fsspec.core.url_to_fs(root_url, **(storage_options or {}))
     root_path = root_path or getattr(fs, "root_marker", "/")
@@ -125,6 +132,7 @@ def create_state(
         preview_bytes=max(preview_bytes, 1),
         preview_rows=max(preview_rows, 1),
         page_size=max(page_size, 1),
+        table_schemas=tuple(table_schemas),
     )
 
 
@@ -281,6 +289,26 @@ def _table_payload(
     )
 
 
+# Bytes and records read to infer a CSV or JSONL schema.
+_INFERENCE_BYTES = 1024 * 1024
+_INFERENCE_RECORDS = 1000
+
+
+def _preview_text_table(state: BrowserState, path: str, info: dict[str, Any], offset: int, format: DataFormat) -> PreviewPage:
+    schema = next((schema for pattern, schema in state.table_schemas if fnmatch.fnmatchcase(path, pattern)), None)
+    if schema is not None:
+        return _preview_decoded(state, path, info, offset, format, schema)
+    size = min(_INFERENCE_BYTES, state.preview_bytes)
+    sample = state.fs.cat_file(path, start=0, end=size)
+    try:
+        schema = DEFAULT_REGISTRY.get(format).infer_schema(sample, max_records=_INFERENCE_RECORDS, truncated=len(sample) == size)
+        return _preview_decoded(state, path, info, offset, format, schema)
+    except ValueError:
+        # Later records may not fit the inferred schema, and JSONL lines may not be objects.
+        untyped = _preview_delimited if format == DataFormat.CSV else _preview_jsonl
+        return untyped(state, path, info, offset)
+
+
 def _preview_delimited(state: BrowserState, path: str, info: dict[str, Any], offset: int) -> PreviewPage:
     with state.fs.open(path, "rt", newline="") as file:
         reader = csv.DictReader(file)
@@ -297,12 +325,13 @@ def _preview_jsonl(state: BrowserState, path: str, info: dict[str, Any], offset:
     return _table_payload(state, path, info, rows, offset)
 
 
-def _preview_embedded_schema(
+def _preview_decoded(
     state: BrowserState,
     path: str,
     info: dict[str, Any],
     offset: int,
     format: DataFormat,
+    schema: pa.Schema | None = None,
 ) -> PreviewPage:
     wanted = state.preview_rows + 1
     rows: list[dict[str, Any]] = []
@@ -310,6 +339,7 @@ def _preview_embedded_schema(
     with state.fs.open(path, "rb") as file:
         batches = DEFAULT_REGISTRY.get(format).iter_batches(
             file,
+            schema=schema,
             batch_size=wanted,
             row_limit=offset + wanted,
             byte_limit=state.preview_bytes,
@@ -350,13 +380,13 @@ def preview_file(
         values = json.loads(data)
         return _table_payload(state, path, info, [{"value": value} for value in values], offset)
     if lower_path.endswith(".csv"):
-        return _preview_delimited(state, path, info, offset)
+        return _preview_text_table(state, path, info, offset, DataFormat.CSV)
     if lower_path.endswith((".jsonl", ".ndjson")):
-        return _preview_jsonl(state, path, info, offset)
+        return _preview_text_table(state, path, info, offset, DataFormat.JSONL)
     if lower_path.endswith((".arrow", ".ipc")):
-        return _preview_embedded_schema(state, path, info, offset, DataFormat.ARROW)
+        return _preview_decoded(state, path, info, offset, DataFormat.ARROW)
     if lower_path.endswith((".parquet", ".pq")):
-        return _preview_embedded_schema(state, path, info, offset, DataFormat.PARQUET)
+        return _preview_decoded(state, path, info, offset, DataFormat.PARQUET)
 
     max_bytes = state.preview_bytes if max_bytes is None else max(max_bytes, 1)
     with state.fs.open(path, "rb") as file:
@@ -499,6 +529,7 @@ def create_server(
     page_size: int = 256,
     preview_bytes: int = MAX_PREVIEW_BYTES,
     preview_rows: int = 20,
+    table_schemas: Sequence[tuple[str, pa.Schema]] = (),
 ) -> BrowserServer:
     server = BrowserServer((host, port), BrowserRequestHandler)
     server.state = state
@@ -507,6 +538,7 @@ def create_server(
     server.page_size = max(page_size, 1)
     server.preview_bytes = max(preview_bytes, 1)
     server.preview_rows = max(preview_rows, 1)
+    server.table_schemas = tuple(table_schemas)
     server.token = secrets.token_urlsafe(32)
     return server
 
@@ -633,6 +665,7 @@ class BrowserRequestHandler(BaseHTTPRequestHandler):
             preview_bytes=self.server.preview_bytes,
             preview_rows=self.server.preview_rows,
             storage_options={str(key): str(value) for key, value in storage_options.items()},
+            table_schemas=self.server.table_schemas,
         )
         self._send_json(self._config_payload())
 
@@ -679,6 +712,26 @@ def _storage_options(pairs: Sequence[tuple[str, str]]) -> dict[str, str]:
     return dict(pairs)
 
 
+def _parse_schema_option(value: str) -> tuple[str, SchemaRef]:
+    pattern, _, url = value.partition("=")
+    if not pattern or not url:
+        raise argparse.ArgumentTypeError(f"schema must be PATTERN=[FORMAT:]URL: {value}")
+    format, _, rest = url.partition(":")
+    if format in {item.value for item in SchemaFormat} and rest:
+        return pattern, SchemaRef(rest, format=format)
+    return pattern, SchemaRef(url)
+
+
+def _table_schemas(options: Sequence[tuple[str, SchemaRef]]) -> tuple[tuple[str, pa.Schema], ...]:
+    """Resolve ``--schema`` references before any file is previewed."""
+    schemas = []
+    for pattern, reference in options:
+        resolved = resolve_schema(reference)
+        assert resolved is not None
+        schemas.append((pattern, resolved.schema))
+    return tuple(schemas)
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="fsspec-browser-web")
     parser.add_argument("path", nargs="?", default=None, help="fsspec URL or local path to browse")
@@ -694,6 +747,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--page-size", default=256, type=int, help="entries revealed per directory page")
     parser.add_argument("--preview-bytes", default=MAX_PREVIEW_BYTES, type=int, help="maximum file preview bytes")
     parser.add_argument("--preview-rows", default=20, type=int, help="maximum database rows per preview")
+    parser.add_argument(
+        "--schema",
+        action="append",
+        default=[],
+        metavar="PATTERN=[FORMAT:]URL",
+        type=_parse_schema_option,
+        help=(
+            "schema for CSV and JSONL files whose path matches PATTERN, where * matches any characters. "
+            "FORMAT is arrow-json, arrow-ipc-schema, json-schema, or avro-schema. Without a match, the schema is inferred. May be repeated"
+        ),
+    )
     parser.add_argument("--host", default="127.0.0.1", help="host for the local web server")
     parser.add_argument("--port", default=0, type=int, help="port for the local web server")
     parser.add_argument("--download-root", default=".", help="directory where downloads are written")
@@ -708,6 +772,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def run(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+    table_schemas = _table_schemas(args.schema)
     state = (
         create_state(
             args.path,
@@ -716,6 +781,7 @@ def run(argv: Sequence[str] | None = None) -> int:
             preview_bytes=args.preview_bytes,
             preview_rows=args.preview_rows,
             storage_options=args.storage_options,
+            table_schemas=table_schemas,
         )
         if args.path
         else None
@@ -728,6 +794,7 @@ def run(argv: Sequence[str] | None = None) -> int:
         page_size=args.page_size,
         preview_bytes=args.preview_bytes,
         preview_rows=args.preview_rows,
+        table_schemas=table_schemas,
     )
     host, port = server.server_address[:2]
     url = f"http://{host}:{port}/"

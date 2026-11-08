@@ -7,13 +7,17 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use arrow::datatypes::SchemaRef;
 use arrow::util::display::array_value_to_string;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
-use fsspec_data::{CancellationToken, CodecReader, DataFormat, StreamOptions, DEFAULT_REGISTRY};
+use fsspec_data::{
+    CancellationToken, CodecReader, DataFormat, SchemaFormat, SchemaReference, StreamOptions,
+    DEFAULT_REGISTRY, DEFAULT_SCHEMA_RESOLVERS,
+};
 use fsspec_rs::{
     FileInfo, FileSystem, FileType, FsError, FsResult, LocalFs, OpenMode, S3Config, S3Fs,
 };
@@ -29,6 +33,12 @@ const DEFAULT_PAGE_SIZE: usize = 256;
 const DEFAULT_PREVIEW_BYTES: usize = 100 * 1024 * 1024;
 const DEFAULT_PREVIEW_ROWS: usize = 20;
 const PREFETCH_MARGIN: usize = 3;
+/// Bytes and records read to infer a CSV or JSONL schema.
+const INFERENCE_BYTES: usize = 1024 * 1024;
+const INFERENCE_RECORDS: usize = 1000;
+
+/// Schemas for text tables, matched in order against file paths.
+type TableSchemas = Arc<Vec<(String, SchemaRef)>>;
 
 struct Args {
     url: Option<String>,
@@ -36,6 +46,7 @@ struct Args {
     page_size: usize,
     preview_bytes: usize,
     preview_rows: usize,
+    schemas: Vec<(String, SchemaReference)>,
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +62,7 @@ impl Args {
         let mut page_size = DEFAULT_PAGE_SIZE;
         let mut preview_bytes = DEFAULT_PREVIEW_BYTES;
         let mut preview_rows = DEFAULT_PREVIEW_ROWS;
+        let mut schemas = Vec::new();
 
         while let Some(value) = values.next() {
             match value.as_str() {
@@ -85,6 +97,17 @@ impl Args {
                     preview_rows = raw
                         .parse()
                         .map_err(|_| format!("invalid --preview-rows: {raw}"))?;
+                }
+                "--schema" => {
+                    let raw = values
+                        .next()
+                        .ok_or_else(|| "--schema requires PATTERN=[FORMAT:]URL".to_string())?;
+                    schemas.push(parse_schema_option(&raw)?);
+                }
+                _ if value.starts_with("--schema=") => {
+                    schemas.push(parse_schema_option(
+                        value.strip_prefix("--schema=").expect("prefix checked"),
+                    )?);
                 }
                 _ if value.starts_with("-o") && value.len() > 2 => {
                     let (key, option_value) = parse_key_value(&value[2..])?;
@@ -134,7 +157,22 @@ impl Args {
             page_size: page_size.max(1),
             preview_bytes: preview_bytes.max(1),
             preview_rows: preview_rows.max(1),
+            schemas,
         }))
+    }
+
+    /// Resolves the `--schema` references before any file is previewed.
+    fn table_schemas(&self) -> Result<TableSchemas, String> {
+        self.schemas
+            .iter()
+            .map(|(pattern, reference)| {
+                DEFAULT_SCHEMA_RESOLVERS
+                    .resolve(reference)
+                    .map(|resolved| (pattern.clone(), resolved.schema))
+                    .map_err(|error| format!("--schema {pattern}: {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Arc::new)
     }
 
     fn session(&self) -> Option<SessionDetails> {
@@ -210,6 +248,11 @@ Options:
       --page-size N                Entries fetched/revealed per page. Default: {DEFAULT_PAGE_SIZE}
       --preview-bytes N            Maximum file preview bytes. Default: {DEFAULT_PREVIEW_BYTES}
       --preview-rows N             Maximum rows per tabular preview page. Default: {DEFAULT_PREVIEW_ROWS}
+      --schema PATTERN=[FORMAT:]URL
+                                   Schema for CSV and JSONL files matching PATTERN, where *
+                                   matches any characters. FORMAT is arrow-json,
+                                   arrow-ipc-schema, json-schema, or avro-schema. Without a
+                                   match, the schema is inferred. May be repeated.
   -h, --help                       Show this help.
 
 Keys:
@@ -274,12 +317,15 @@ pub trait BrowserBackend: Send {
         continuation: Option<&PreviewContinuation>,
         limit: usize,
     ) -> FsResult<PreviewPage>;
+    /// Previews `path` as a table when its format is tabular. `schema` decodes CSV and JSONL
+    /// files; without it their schema is inferred.
     fn preview_data(
         &self,
         path: &str,
         continuation: Option<&PreviewContinuation>,
         _row_limit: usize,
         byte_limit: usize,
+        _schema: Option<SchemaRef>,
     ) -> FsResult<PreviewDataPage> {
         let page = self.preview(path, continuation, byte_limit)?;
         Ok(PreviewDataPage {
@@ -401,6 +447,7 @@ impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
         continuation: Option<&PreviewContinuation>,
         row_limit: usize,
         byte_limit: usize,
+        schema: Option<SchemaRef>,
     ) -> FsResult<PreviewDataPage> {
         if let Some(format) = tabular_format(path) {
             let offset = match continuation {
@@ -412,8 +459,41 @@ impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
                     ));
                 }
             };
-            let reader = self.fs.open(path, OpenMode::Read, None)?;
-            return decode_tabular_preview(Box::new(reader), format, offset, row_limit, byte_limit);
+            let text = matches!(format, DataFormat::Csv | DataFormat::JsonLines);
+            let inferred = text && schema.is_none();
+            let schema = match schema {
+                Some(schema) => Some(schema),
+                None if text => {
+                    let sample_size = INFERENCE_BYTES.min(byte_limit.max(1));
+                    let sample = self.fs.cat_file(path, Some(0), Some(sample_size as i64))?;
+                    DEFAULT_REGISTRY
+                        .get(format)
+                        .and_then(|codec| {
+                            codec.infer_schema(
+                                &sample,
+                                Some(INFERENCE_RECORDS),
+                                sample.len() == sample_size,
+                            )
+                        })
+                        .ok()
+                }
+                None => None,
+            };
+            if !inferred || schema.is_some() {
+                let reader = self.fs.open(path, OpenMode::Read, None)?;
+                let page = decode_tabular_preview(
+                    Box::new(reader),
+                    format,
+                    schema,
+                    offset,
+                    row_limit,
+                    byte_limit,
+                );
+                // An inferred schema may not fit later records; show those files as text.
+                if page.is_ok() || !inferred {
+                    return page;
+                }
+            }
         }
         let page = self.preview(path, continuation, byte_limit)?;
         Ok(PreviewDataPage {
@@ -444,14 +524,59 @@ fn tabular_format(path: &str) -> Option<DataFormat> {
         Some(DataFormat::Arrow)
     } else if path.ends_with(".parquet") || path.ends_with(".pq") {
         Some(DataFormat::Parquet)
+    } else if path.ends_with(".csv") {
+        Some(DataFormat::Csv)
+    } else if path.ends_with(".jsonl") || path.ends_with(".ndjson") {
+        Some(DataFormat::JsonLines)
     } else {
         None
     }
 }
 
+/// Parses `PATTERN=[FORMAT:]URL` for `--schema`.
+fn parse_schema_option(value: &str) -> Result<(String, SchemaReference), String> {
+    let (pattern, url) = value
+        .split_once('=')
+        .filter(|(pattern, url)| !pattern.is_empty() && !url.is_empty())
+        .ok_or_else(|| format!("expected --schema PATTERN=[FORMAT:]URL, got {value}"))?;
+    let reference = match url.split_once(':') {
+        Some((format, rest)) => match SchemaFormat::parse(format) {
+            Ok(format) => SchemaReference::new(rest).with_format(format),
+            Err(_) => SchemaReference::new(url),
+        },
+        None => SchemaReference::new(url),
+    };
+    Ok((pattern.to_string(), reference))
+}
+
+/// Matches `path` against a pattern where `*` matches any characters and `?` matches one.
+fn glob_matches(pattern: &str, path: &str) -> bool {
+    let (pattern, path): (Vec<char>, Vec<char>) =
+        (pattern.chars().collect(), path.chars().collect());
+    let (mut p, mut s, mut star, mut mark) = (0, 0, None, 0);
+    while s < path.len() {
+        if p < pattern.len() && (pattern[p] == '?' || pattern[p] == path[s]) {
+            p += 1;
+            s += 1;
+        } else if p < pattern.len() && pattern[p] == '*' {
+            star = Some(p);
+            mark = s;
+            p += 1;
+        } else if let Some(star) = star {
+            p = star + 1;
+            mark += 1;
+            s = mark;
+        } else {
+            return false;
+        }
+    }
+    pattern[p..].iter().all(|c| *c == '*')
+}
+
 fn decode_tabular_preview(
     reader: Box<dyn CodecReader>,
     format: DataFormat,
+    schema: Option<SchemaRef>,
     offset: usize,
     row_limit: usize,
     byte_limit: usize,
@@ -462,7 +587,7 @@ fn decode_tabular_preview(
         .and_then(|codec| {
             codec.decode_reader(
                 reader,
-                None,
+                schema,
                 StreamOptions {
                     batch_size: wanted,
                     row_limit: Some(offset.saturating_add(wanted)),
@@ -773,6 +898,7 @@ struct BrowserApp {
     page_size: usize,
     preview_bytes: usize,
     preview_rows: usize,
+    table_schemas: TableSchemas,
     message: String,
     preview_cache: HashMap<String, PreviewCache>,
     preview_requests: HashSet<String>,
@@ -855,6 +981,7 @@ impl BrowserApp {
         page_size: usize,
         preview_bytes: usize,
         preview_rows: usize,
+        table_schemas: TableSchemas,
     ) -> Self {
         let backend_name = backend.name().to_string();
         let mut app = Self {
@@ -866,6 +993,7 @@ impl BrowserApp {
             page_size,
             preview_bytes,
             preview_rows,
+            table_schemas,
             message: String::new(),
             preview_cache: HashMap::new(),
             preview_requests: HashSet::new(),
@@ -1066,6 +1194,11 @@ impl BrowserApp {
         let backend = Arc::clone(&self.backend);
         let preview_bytes = self.preview_bytes;
         let preview_rows = self.preview_rows;
+        let schema = self
+            .table_schemas
+            .iter()
+            .find(|(pattern, _)| glob_matches(pattern, &path))
+            .map(|(_, schema)| schema.clone());
         let worker_path = path.clone();
         let worker_continuation = continuation.clone();
         let (sender, receiver) = mpsc::channel();
@@ -1080,6 +1213,7 @@ impl BrowserApp {
                             worker_continuation.as_ref(),
                             preview_rows,
                             preview_bytes,
+                            schema,
                         )
                         .map_err(|err| err.to_string())
                 });
@@ -1883,6 +2017,7 @@ where
                     app.page_size,
                     app.preview_bytes,
                     app.preview_rows,
+                    app.table_schemas.clone(),
                 );
             }
         }
@@ -2044,6 +2179,7 @@ where
     }) else {
         return Ok(());
     };
+    let table_schemas = args.table_schemas().map_err(FsError::InvalidArgument)?;
     let (backend, start_path) = build_backend(&session, &fallback)?;
     let app = BrowserApp::new(
         backend,
@@ -2051,6 +2187,7 @@ where
         args.page_size,
         args.preview_bytes,
         args.preview_rows,
+        table_schemas,
     );
     run_terminal(app, &fallback)?;
     Ok(())
@@ -2150,7 +2287,14 @@ mod tests {
             preview_calls: preview_calls.clone(),
             auto_preview: false,
         };
-        let mut app = BrowserApp::new(Box::new(backend), "/root".to_string(), 2, 16, 2);
+        let mut app = BrowserApp::new(
+            Box::new(backend),
+            "/root".to_string(),
+            2,
+            16,
+            2,
+            Arc::new(Vec::new()),
+        );
         settle(&mut app);
         (app, calls, preview_calls)
     }
@@ -2209,17 +2353,30 @@ mod tests {
             let first = decode_tabular_preview(
                 Box::new(Cursor::new(encoded.clone())),
                 format,
+                None,
                 0,
                 2,
                 1024 * 1024,
             )
             .unwrap();
-            let limit_error =
-                decode_tabular_preview(Box::new(Cursor::new(encoded.clone())), format, 0, 2, 1)
-                    .unwrap_err();
-            let second =
-                decode_tabular_preview(Box::new(Cursor::new(encoded)), format, 2, 2, 1024 * 1024)
-                    .unwrap();
+            let limit_error = decode_tabular_preview(
+                Box::new(Cursor::new(encoded.clone())),
+                format,
+                None,
+                0,
+                2,
+                1,
+            )
+            .unwrap_err();
+            let second = decode_tabular_preview(
+                Box::new(Cursor::new(encoded)),
+                format,
+                None,
+                2,
+                2,
+                1024 * 1024,
+            )
+            .unwrap();
 
             assert_eq!(
                 first.content,
@@ -2258,12 +2415,136 @@ mod tests {
     }
 
     #[test]
-    fn tabular_preview_format_uses_embedded_schema_extensions() {
+    fn tabular_preview_format_uses_table_extensions() {
         assert_eq!(tabular_format("data.arrow"), Some(DataFormat::Arrow));
         assert_eq!(tabular_format("data.ipc"), Some(DataFormat::Arrow));
         assert_eq!(tabular_format("data.parquet"), Some(DataFormat::Parquet));
         assert_eq!(tabular_format("data.pq"), Some(DataFormat::Parquet));
-        assert_eq!(tabular_format("data.csv"), None);
+        assert_eq!(tabular_format("DATA.CSV"), Some(DataFormat::Csv));
+        assert_eq!(tabular_format("data.jsonl"), Some(DataFormat::JsonLines));
+        assert_eq!(tabular_format("data.ndjson"), Some(DataFormat::JsonLines));
+        assert_eq!(tabular_format("data.txt"), None);
+    }
+
+    fn table(columns: &[&str], rows: &[&[&str]]) -> PreviewContent {
+        PreviewContent::Table {
+            columns: columns.iter().map(|column| column.to_string()).collect(),
+            rows: rows
+                .iter()
+                .map(|row| row.iter().map(|value| value.to_string()).collect())
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn text_tables_preview_with_inferred_or_given_schemas() {
+        let directory =
+            std::env::temp_dir().join(format!("fsspec-browser-text-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let csv = directory.join("scores.csv");
+        fs::write(&csv, "name,score\nada,2\ngrace,3\nlin,4\n").unwrap();
+        let jsonl = directory.join("scores.jsonl");
+        fs::write(
+            &jsonl,
+            "{\"name\": \"ada\", \"score\": 2}\n{\"name\": \"lin\", \"score\": 4}\n",
+        )
+        .unwrap();
+        let scalars = directory.join("scalars.jsonl");
+        fs::write(&scalars, "1\n2\n").unwrap();
+        let backend = FsspecBackend::new(LocalFs::new(), "local", "local-rs", false, None);
+        let path = |path: &PathBuf| path.display().to_string();
+
+        let first = backend
+            .preview_data(&path(&csv), None, 2, 1 << 20, None)
+            .unwrap();
+        assert_eq!(
+            first.content,
+            table(&["name", "score"], &[&["ada", "2"], &["grace", "3"]])
+        );
+        let second = backend
+            .preview_data(&path(&csv), first.continuation.as_ref(), 2, 1 << 20, None)
+            .unwrap();
+        assert_eq!(second.content, table(&["name", "score"], &[&["lin", "4"]]));
+
+        let floats = Arc::new(Schema::new(vec![
+            Field::new("name", DataType::Utf8, true),
+            Field::new("score", DataType::Float64, true),
+        ]));
+        let given = backend
+            .preview_data(&path(&csv), None, 1, 1 << 20, Some(floats.clone()))
+            .unwrap();
+        assert_eq!(given.content, table(&["name", "score"], &[&["ada", "2.0"]]));
+
+        let jsonl_page = backend
+            .preview_data(&path(&jsonl), None, 5, 1 << 20, None)
+            .unwrap();
+        assert_eq!(
+            jsonl_page.content,
+            table(&["name", "score"], &[&["ada", "2"], &["lin", "4"]])
+        );
+
+        let fallback = backend
+            .preview_data(&path(&scalars), None, 5, 1 << 20, None)
+            .unwrap();
+        assert_eq!(fallback.content, PreviewContent::Bytes(b"1\n2\n".to_vec()));
+        let mismatched = Arc::new(Schema::new(vec![Field::new("n", DataType::Int64, true)]));
+        assert!(backend
+            .preview_data(&path(&csv), None, 5, 1 << 20, Some(mismatched))
+            .is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn schema_options_resolve_before_previews() {
+        let directory =
+            std::env::temp_dir().join(format!("fsspec-browser-schema-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let schema_path = directory.join("scores.json");
+        fs::write(&schema_path, r#"{"fields": [{"name": "name", "type": "string"}, {"name": "score", "type": "float64"}]}"#).unwrap();
+
+        let args = Args::parse(
+            vec![
+                "/data".to_string(),
+                "--schema".to_string(),
+                format!("*/scores.csv=arrow-json:{}", schema_path.display()),
+                format!(
+                    "--schema=*.jsonl={}",
+                    directory.join("missing.arrow").display()
+                ),
+            ]
+            .into_iter(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(args.schemas[0].0, "*/scores.csv");
+        assert_eq!(args.schemas[0].1.format, Some(SchemaFormat::ArrowJson));
+        assert_eq!(args.schemas[1].1.format, None);
+        let error = args.table_schemas().unwrap_err();
+        assert!(error.starts_with("--schema *.jsonl: "), "{error}");
+
+        let valid = format!("--schema=*/scores.csv=arrow-json:{}", schema_path.display());
+        let args = Args::parse(vec![valid].into_iter()).unwrap().unwrap();
+        let schemas = args.table_schemas().unwrap();
+        assert_eq!(schemas[0].1.field(1).data_type(), &DataType::Float64);
+        fs::remove_dir_all(directory).unwrap();
+
+        let (_, reference) = parse_schema_option("*=s3://bucket/schema.arrow").unwrap();
+        assert_eq!(reference.url, "s3://bucket/schema.arrow");
+        for value in ["*.csv", "=x", "*.csv="] {
+            assert!(parse_schema_option(value).is_err(), "{value}");
+        }
+        assert!(Args::parse(vec!["--schema".to_string()].into_iter()).is_err());
+    }
+
+    #[test]
+    fn schema_patterns_match_whole_paths() {
+        assert!(glob_matches("*.csv", "/data/2026/orders.csv"));
+        assert!(glob_matches("/data/*/orders.csv", "/data/2026/orders.csv"));
+        assert!(glob_matches("/data/202?/*", "/data/2026/x"));
+        assert!(glob_matches("*", ""));
+        assert!(!glob_matches("*.csv", "/data/orders.jsonl"));
+        assert!(!glob_matches("/data/*.csv", "/other/orders.csv"));
+        assert!(!glob_matches("a", "ab"));
     }
 
     #[test]

@@ -36,7 +36,8 @@ current one.
 
 CSV, JSON, JSONL, and Parquet need format-aware renderers to be useful, but decoding them
 does not change filesystem semantics. Keeping rendering in the browser prevents display
-concerns from leaking into storage backends.
+concerns from leaking into storage backends. Decoding itself belongs to `fsspec-data`, which
+also infers or resolves the schemas that CSV and JSONL lack.
 
 ## Pagination protects interactive work
 

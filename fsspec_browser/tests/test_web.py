@@ -332,7 +332,7 @@ def test_preview_tabular_files_are_paged(tmp_path):
     csv_page = web.preview_file(state, str(csv_path))
     jsonl_page = web.preview_file(state, str(jsonl_path), offset=2)
 
-    assert csv_page["rows"] == [{"name": "ada", "score": "2"}, {"name": "grace", "score": "3"}]
+    assert csv_page["rows"] == [{"name": "ada", "score": 2}, {"name": "grace", "score": 3}]
     assert csv_page["continuation"] == {"kind": "offset", "value": 2}
     assert jsonl_page["rows"] == [{"name": "lin", "score": 4}]
     assert jsonl_page["continuation"] is None
@@ -385,8 +385,94 @@ def test_preview_embedded_schema_formats_use_fsspec_data(tmp_path, monkeypatch, 
     assert next_preview["continuation"] is None
     assert len(calls) == 2
     assert hasattr(calls[0][0], "read")
-    assert calls[0][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 3}
-    assert calls[1][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 5}
+    assert calls[0][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 3, "schema": None}
+    assert calls[1][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 5, "schema": None}
+
+
+def test_text_table_previews_use_matching_schemas(tmp_path):
+    import pyarrow as pa
+
+    from fsspec_browser import web
+
+    csv_path = tmp_path / "2026" / "scores.csv"
+    csv_path.parent.mkdir()
+    csv_path.write_text("name,score\nada,2\ngrace,3\n")
+    floats = pa.schema([("name", pa.string()), ("score", pa.float64())])
+    state = web.create_state(
+        str(tmp_path),
+        static_dir=tmp_path,
+        download_root=tmp_path,
+        table_schemas=[("*.jsonl", pa.schema([("x", pa.int8())])), ("*/2026/*.csv", floats)],
+    )
+
+    page = web.preview_file(state, str(csv_path))
+
+    assert page["rows"] == [{"name": "ada", "score": 2.0}, {"name": "grace", "score": 3.0}]
+    assert isinstance(page["rows"][0]["score"], float)
+    state.table_schemas = (("*.csv", pa.schema([("name", pa.int64()), ("score", pa.int64())])),)
+    with pytest.raises(ValueError):
+        web.preview_file(state, str(csv_path))
+
+
+def test_text_tables_fall_back_when_inferred_schemas_do_not_fit(tmp_path):
+    from fsspec_browser import web
+
+    scalars = tmp_path / "scalars.jsonl"
+    scalars.write_text("1\n2\n")
+    later = tmp_path / "later.csv"
+    later.write_text("name,score\nada,2\ngrace,x\n")
+    state = web.create_state(str(tmp_path), static_dir=tmp_path, download_root=tmp_path, preview_bytes=10)
+
+    assert web.preview_file(state, str(scalars))["rows"] == [{"value": 1}, {"value": 2}]
+    assert web.preview_file(state, str(later))["rows"] == [{"name": "ada", "score": "2"}, {"name": "grace", "score": "x"}]
+
+
+def test_schema_options_resolve_references(tmp_path):
+    import pyarrow as pa
+
+    from fsspec_browser import web
+
+    schema_path = tmp_path / "scores.json"
+    schema_path.write_text(json.dumps({"fields": [{"name": "name", "type": "string"}, {"name": "score", "type": "float64"}]}))
+    args = web._parse_args(["--schema", f"*.csv=arrow-json:{schema_path}", f"--schema=*.jsonl=s3://bucket/{schema_path.name}"])
+
+    assert args.schema[0][1].format == "arrow-json"
+    assert args.schema[1][1].url == "s3://bucket/scores.json"
+    assert args.schema[1][1].format is None
+    assert web._table_schemas(args.schema[:1]) == (("*.csv", pa.schema([("name", pa.string()), ("score", pa.float64())])),)
+    with pytest.raises(SystemExit):
+        web._parse_args(["--schema", "*.csv"])
+
+
+def test_sessions_keep_server_table_schemas(tmp_path):
+    import pyarrow as pa
+
+    from fsspec_browser import web
+
+    schemas = (("*.csv", pa.schema([("name", pa.string())])),)
+    server = web.create_server("127.0.0.1", 0, None, static_dir=tmp_path, download_root=tmp_path, table_schemas=schemas)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        _host, port = server.server_address[:2]
+        connection = HTTPConnection("127.0.0.1", port)
+        connection.request(
+            "POST",
+            "/api/session",
+            body=json.dumps({"path": str(tmp_path)}).encode(),
+            headers={
+                "content-type": "application/json",
+                "host": f"127.0.0.1:{port}",
+                "x-fsspec-browser-token": server.token,
+            },
+        )
+        assert connection.getresponse().status == 200
+        assert server.state is not None
+        assert server.state.table_schemas == schemas
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_preview_kafka_partition_pages_by_offset_token(tmp_path):
