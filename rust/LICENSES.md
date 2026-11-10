@@ -14,7 +14,7 @@ requirements. Dependency updates with new missing texts fail rather than reusing
 - crc-catalog 2.5.0: published LICENSES/MIT.txt and LICENSES/Apache-2.0.txt.
 - flatbuffers 25.12.19: repository LICENSE at the published crate's VCS commit.
 - fsspec_data 0.5.0: repository LICENSE at the published crate's VCS commit.
-- fsspec_rs 0.1.7 and fsspec_rs_bridge 0.1.5: shared repository LICENSE at each published crate's VCS commit.
+- fsspec_rs 0.1.8 and fsspec_rs_bridge 0.1.5: shared repository LICENSE at each published crate's VCS commit.
 - jni 0.22.4, jni-macros 0.22.4, jni-sys-macros 0.4.1, and rustls-platform-verifier-android 0.2.0: repository LICENSE-MIT and LICENSE-APACHE at each published crate's VCS commit.
 - mac_address 1.2.0: published LICENSE-APACHE2.0.
 - r-efi 5.3.0 and 6.0.0: complete published AUTHORS, with Apache and GNU LGPL terms appended as described below.

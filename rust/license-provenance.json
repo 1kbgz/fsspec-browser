@@ -45,9 +45,9 @@
     },
     {
       "package": "fsspec_rs",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "path": "LICENSE",
-      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/0baabf643b289ec8d7d583abc379fda966b5cba2/LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/1cd8d319beee4e7dbcf475156d436034ae366299/LICENSE",
       "sha256": "342d89813d1d45d0ab63dd908ae9a43130f3c5ea52b2dd55726bda3deb7009ef"
     },
     {
