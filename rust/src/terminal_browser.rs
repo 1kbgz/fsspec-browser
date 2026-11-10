@@ -19,7 +19,7 @@ use fsspec_data::{
     DEFAULT_REGISTRY, DEFAULT_SCHEMA_RESOLVERS,
 };
 use fsspec_rs::{
-    FileInfo, FileSystem, FileType, FsError, FsResult, LocalFs, OpenMode, S3Config, S3Fs,
+    url_to_fs, FileInfo, FileType, FsError, FsOptions, FsResult, OpenMode, SharedFileSystem,
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -339,17 +339,17 @@ pub trait BrowserBackend: Send {
 
 pub type BackendResult = FsResult<(Box<dyn BrowserBackend>, String)>;
 
-struct FsspecBackend<F: FileSystem> {
-    fs: F,
+struct FsspecBackend {
+    fs: SharedFileSystem,
     name: &'static str,
     display_protocol: &'static str,
     auto_preview: bool,
     root: Option<String>,
 }
 
-impl<F: FileSystem> FsspecBackend<F> {
+impl FsspecBackend {
     fn new(
-        fs: F,
+        fs: SharedFileSystem,
         name: &'static str,
         display_protocol: &'static str,
         auto_preview: bool,
@@ -375,7 +375,7 @@ impl<F: FileSystem> FsspecBackend<F> {
     }
 }
 
-impl<F: FileSystem + Send> BrowserBackend for FsspecBackend<F> {
+impl BrowserBackend for FsspecBackend {
     fn name(&self) -> &str {
         self.name
     }
@@ -654,28 +654,15 @@ fn build_backend<F>(session: &SessionDetails, fallback: &F) -> BackendResult
 where
     F: Fn(&SessionDetails, &str) -> BackendResult,
 {
-    if !session.url.contains("://") {
+    let local_path = if session.url.contains("://") {
+        strip_local_url(&session.url)
+    } else {
+        Some(absolute_path(&session.url)?)
+    };
+    if let Some(path) = local_path {
+        let (fs, path) = url_to_fs(&path, &FsOptions::new())?;
         return Ok((
-            Box::new(FsspecBackend::new(
-                LocalFs::new(),
-                "local-rs",
-                "local-rs",
-                true,
-                None,
-            )),
-            absolute_path(&session.url)?,
-        ));
-    }
-
-    if let Some(path) = strip_local_url(&session.url) {
-        return Ok((
-            Box::new(FsspecBackend::new(
-                LocalFs::new(),
-                "local-rs",
-                "local-rs",
-                true,
-                None,
-            )),
+            Box::new(FsspecBackend::new(fs, "local-rs", "local-rs", true, None)),
             path,
         ));
     }
@@ -694,12 +681,11 @@ where
             } else {
                 format!("{bucket}/{key}")
             };
-            let mut cfg = S3Config::new(bucket.clone());
-            apply_s3_options(&mut cfg, &session.storage_options);
-            validate_s3_config(&cfg)?;
+            let options = s3_options(&session.storage_options)?;
+            let (fs, _) = url_to_fs(&format!("s3://{start}"), &options)?;
             Ok((
                 Box::new(FsspecBackend::new(
-                    S3Fs::new(cfg)?,
+                    fs,
                     "s3-rs",
                     "s3-rs",
                     false,
@@ -750,32 +736,28 @@ fn shellexpand_tilde(path: &str) -> String {
     path.to_string()
 }
 
-fn apply_s3_options(cfg: &mut S3Config, options: &HashMap<String, String>) {
-    if let Some(value) = option_value(options, &["key", "access_key_id"]) {
-        cfg.access_key_id = Some(value);
+/// Registry options for an S3 filesystem, accepting the browser's option aliases.
+fn s3_options(options: &HashMap<String, String>) -> FsResult<FsOptions> {
+    let mut s3 = FsOptions::new();
+    for (name, aliases) in [
+        ("key", &["key", "access_key_id"][..]),
+        ("secret", &["secret", "secret_access_key"]),
+        ("endpoint_url", &["endpoint_url", "endpoint"]),
+        ("token", &["token", "session_token"]),
+        ("region", &["region"]),
+    ] {
+        if let Some(value) = option_value(options, aliases) {
+            s3.insert(name.to_string(), value);
+        }
     }
-    if let Some(value) = option_value(options, &["secret", "secret_access_key"]) {
-        cfg.secret_access_key = Some(value);
-    }
-    if let Some(value) = option_value(options, &["endpoint_url", "endpoint"]) {
-        cfg.endpoint_url = Some(value);
-    }
-    if let Some(value) = option_value(options, &["token", "session_token"]) {
-        cfg.session_token = Some(value);
-    }
-    if let Some(value) = option_value(options, &["region"]) {
-        cfg.region = Some(value);
-    }
-    if let Some(value) = option_value(options, &["anon"]) {
-        cfg.anon = matches!(value.as_str(), "1" | "true" | "True" | "yes");
-    }
-}
-
-fn validate_s3_config(cfg: &S3Config) -> FsResult<()> {
-    if let Some(endpoint) = &cfg.endpoint_url {
+    if let Some(endpoint) = s3.get("endpoint_url") {
         validate_endpoint_url(endpoint)?;
     }
-    Ok(())
+    if let Some(value) = option_value(options, &["anon"]) {
+        let anon = matches!(value.as_str(), "1" | "true" | "True" | "yes");
+        s3.insert("anon".to_string(), anon.to_string());
+    }
+    Ok(s3)
 }
 
 fn validate_endpoint_url(endpoint: &str) -> FsResult<()> {
@@ -2207,6 +2189,7 @@ mod tests {
     use arrow::array::{Int64Array, StringArray};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
+    use fsspec_rs::LocalFs;
     use std::io::Cursor;
 
     type Calls = Arc<Mutex<Vec<(String, usize)>>>;
@@ -2451,7 +2434,8 @@ mod tests {
         .unwrap();
         let scalars = directory.join("scalars.jsonl");
         fs::write(&scalars, "1\n2\n").unwrap();
-        let backend = FsspecBackend::new(LocalFs::new(), "local", "local-rs", false, None);
+        let backend =
+            FsspecBackend::new(Arc::new(LocalFs::new()), "local", "local-rs", false, None);
         let path = |path: &PathBuf| path.display().to_string();
 
         let first = backend
