@@ -15,7 +15,7 @@ import sys
 import webbrowser
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -164,12 +164,12 @@ def _format_metadata_value(key: str, value: Any) -> str | None:
         return None
     if isinstance(value, datetime):
         if value.tzinfo is not None:
-            value = value.astimezone(timezone.utc)
+            value = value.astimezone(UTC)
         return value.isoformat()
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, (int, float)) and not isinstance(value, bool) and key in _TIMESTAMP_KEYS:
-        return datetime.fromtimestamp(value, timezone.utc).isoformat()
+        return datetime.fromtimestamp(value, UTC).isoformat()
     text = str(value)
     return text or None
 

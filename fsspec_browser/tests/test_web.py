@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.client import HTTPConnection
 from pathlib import Path
 from threading import Thread
@@ -250,7 +250,7 @@ def test_normalize_entry_includes_metadata():
     entry = web._normalize_entry(
         FakeFs(),
         {
-            "LastModified": datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc),
+            "LastModified": datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
             "created": 0,
             "etag": "abc",
             "name": "bucket/data.json",
