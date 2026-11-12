@@ -6,8 +6,6 @@ hidden: true
 
 
 
-docs/src/how-to-build.md
-
 docs/src/tutorial.md
 
 docs/src/terminal.md
@@ -19,10 +17,6 @@ docs/src/cli.md
 docs/src/api.md
 
 docs/src/explanation.md
-
-docs/src/licenses.md
-
-rust/LICENSES.md
 
 
 ```
@@ -54,7 +48,3 @@ The [command-line reference](docs/src/cli.md) lists flags, defaults, keys, and
 preview limits. The [Python API reference](docs/src/api.md) covers embedding.
 Read [Why browsing and previewing are separate operations](docs/src/explanation.md)
 for backend boundaries and paging costs.
-
-For source installations, follow [How to build from source](docs/src/how-to-build.md).
-[License bundle reference](docs/src/licenses.md) describes the included inventories
-and their coverage.
