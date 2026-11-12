@@ -5,7 +5,7 @@ their structured contents without writing application code.
 
 ## Before you start
 
-Install `fsspec-browser` in a Python 3.10 or newer environment:
+Install `fsspec-browser` in a Python 3.11 or newer environment:
 
 ```console
 python -m pip install fsspec-browser
