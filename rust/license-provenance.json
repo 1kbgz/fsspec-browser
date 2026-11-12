@@ -38,23 +38,30 @@
     },
     {
       "package": "fsspec_data",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "path": "LICENSE",
-      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-data/65f88dfb6c1a181bf54c5d228b06e4d6be653959/LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-data/ad40547a08fcd6d12957a88bef93b3ee069b20ad/LICENSE",
       "sha256": "7cb572d4a9535d81e1b9187f31d5e60c5459cb4d47f4c61b330d25da14002650"
     },
     {
       "package": "fsspec_rs",
-      "version": "0.1.7",
+      "version": "0.2.1",
       "path": "LICENSE",
-      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/0baabf643b289ec8d7d583abc379fda966b5cba2/LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/f7e16e52e6ff8def909e7b2bae57d601aa615e0b/LICENSE",
       "sha256": "342d89813d1d45d0ab63dd908ae9a43130f3c5ea52b2dd55726bda3deb7009ef"
     },
     {
       "package": "fsspec_rs_bridge",
-      "version": "0.1.5",
+      "version": "0.2.1",
       "path": "LICENSE",
-      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/7d85945bae87e5439a048572b3def6ff8c857587/LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/f7e16e52e6ff8def909e7b2bae57d601aa615e0b/LICENSE",
+      "sha256": "342d89813d1d45d0ab63dd908ae9a43130f3c5ea52b2dd55726bda3deb7009ef"
+    },
+    {
+      "package": "fsspec_sys",
+      "version": "0.2.1",
+      "path": "LICENSE",
+      "origin": "https://raw.githubusercontent.com/1kbgz/fsspec-rs/f7e16e52e6ff8def909e7b2bae57d601aa615e0b/LICENSE",
       "sha256": "342d89813d1d45d0ab63dd908ae9a43130f3c5ea52b2dd55726bda3deb7009ef"
     },
     {
