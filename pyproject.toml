@@ -137,7 +137,7 @@ repair-wheel-command = "auditwheel repair --exclude 'libfsspec.so*' -w {dest_dir
 before-all = "cargo install cargo-bundle-licenses --version 4.2.0 --locked"
 environment = {PATH="$HOME/.cargo/bin:$PATH", CARGO_TERM_COLOR="always", MACOSX_DEPLOYMENT_TARGET=11.0}
 archs = "arm64"
-repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} --exclude libfsspec -w {dest_dir} -v {wheel}"
+repair-wheel-command = "bash {project}/scripts/repair-macos-wheel.sh {delocate_archs} {dest_dir} {wheel}"
 
 [tool.cibuildwheel.windows]
 before-all = "cargo install cargo-bundle-licenses --version 4.2.0 --locked"
