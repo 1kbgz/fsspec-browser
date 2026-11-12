@@ -1,5 +1,7 @@
 use std::path::Path;
 
+mod registry;
+
 use fsspec_browser_core::{
     BackendResult, BrowserBackend, ListPage, PreviewContinuation, PreviewPage, SessionDetails,
 };
@@ -226,6 +228,8 @@ fn run_browser(py: Python<'_>, argv: Vec<String>) -> PyResult<()> {
 
 #[pymodule]
 fn fsspec_browser(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+    registry::install();
+    m.add_function(wrap_pyfunction!(registry::linked_to_libfsspec, m)?)?;
     m.add_function(wrap_pyfunction!(run_browser, m)?)?;
     Ok(())
 }
