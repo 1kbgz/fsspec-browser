@@ -25,7 +25,3 @@ The [command-line reference](docs/src/cli.md) lists flags, defaults, keys, and
 preview limits. The [Python API reference](docs/src/api.md) covers embedding.
 Read [Why browsing and previewing are separate operations](docs/src/explanation.md)
 for backend boundaries and paging costs.
-
-For source installations, follow [How to build from source](docs/src/how-to-build.md).
-[License bundle reference](docs/src/licenses.md) describes the included inventories
-and their coverage.
