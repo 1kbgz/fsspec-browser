@@ -15,7 +15,7 @@
     },
     {
       "package_name": "brotli",
-      "package_version": "9.1.1",
+      "package_version": "9.1.2",
       "repository": "https://github.com/dropbox/rust-brotli",
       "license": "BSD-3-Clause AND MIT",
       "licenses": [
@@ -71,7 +71,7 @@
     },
     {
       "package_name": "fsspec_rs",
-      "package_version": "0.2.1",
+      "package_version": "0.2.3",
       "repository": "https://github.com/1kbgz/fsspec-rs",
       "license": "Apache-2.0",
       "licenses": [
@@ -83,7 +83,7 @@
     },
     {
       "package_name": "fsspec_rs_bridge",
-      "package_version": "0.2.1",
+      "package_version": "0.2.3",
       "repository": "https://github.com/1kbgz/fsspec-rs",
       "license": "Apache-2.0",
       "licenses": [
@@ -95,7 +95,7 @@
     },
     {
       "package_name": "fsspec_sys",
-      "package_version": "0.2.1",
+      "package_version": "0.2.3",
       "repository": "https://github.com/1kbgz/fsspec-rs",
       "license": "Apache-2.0",
       "licenses": [
