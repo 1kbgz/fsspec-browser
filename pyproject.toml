@@ -2,7 +2,7 @@
 requires = [
     "hatchling",
     "hatch-js>=0.1.4",
-    "hatch-rs>=0.6.0",
+    "hatch-rs>=0.6.1",
     "fsspec-rs>=0.2.1,<0.3",
 ]
 build-backend = "hatchling.build"
@@ -51,7 +51,7 @@ develop = [
     "cibuildwheel",
     "codespell",
     "hatch-js>=0.1.4",
-    "hatch-rs>=0.4.3",
+    "hatch-rs>=0.6.1",
     "hatchling",
     "mdformat",
     "mdformat-myst",

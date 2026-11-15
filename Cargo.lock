@@ -459,9 +459,9 @@ dependencies = [
 
 [[package]]
 name = "brotli"
-version = "9.1.1"
+version = "9.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "627b7cfb0578f0eafce087a90fcd40add1231900b69e4d4de2d456260a4f5d81"
+checksum = "05e0144f854f7cfbc157229554c4a9580b8a653448e2bab608022ee0398a07dc"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
@@ -480,9 +480,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.20.3"
+version = "3.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
+checksum = "87a0cf66fd1eb2fb7b822cb78370d82303750809bc6ba855f3f58e517d3238db"
 
 [[package]]
 name = "by_address"
@@ -513,9 +513,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.11.1"
+version = "1.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ff2a8126fff0f8c839080d619675a585e61720bb12d2baceae45769fd66f155"
+checksum = "33ef9e3e8154a45c7a95cff4c1299702106ad94062d7bb85fdc5d3a5afd91d45"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1054,9 +1054,9 @@ dependencies = [
 
 [[package]]
 name = "fsspec_rs"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e41c5e526f6346637d0b7c9bbbc760a2727c4f5f2291fcc3bf11841be48e11c"
+checksum = "5594e3e3dca41de99643b2861efec07d811cd9320f67fe1f068656085517429e"
 dependencies = [
  "bytes",
  "object_store",
@@ -1067,9 +1067,9 @@ dependencies = [
 
 [[package]]
 name = "fsspec_rs_bridge"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3552ed4e21e79beb49f021cdd51b17cf15980e51fb0e102eb3fd9ed80d29881"
+checksum = "9f30f78bd02121295c8793099e5d7d75443212aceea70d267332a0a3756d6c9e"
 dependencies = [
  "fsspec_rs",
  "pyo3",
@@ -1077,9 +1077,9 @@ dependencies = [
 
 [[package]]
 name = "fsspec_sys"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a8174dcff0ff77ffd6642446fc1d988f1f8a1e274403332704d5ce32045f724"
+checksum = "0986a650028850b9ad8dfa41eb3bfdf5360217c4c20213805c4870b9e605287a"
 dependencies = [
  "fsspec_rs",
 ]
@@ -1788,9 +1788,9 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "lz4_flex"
-version = "0.14.0"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
+checksum = "f56455fff36934a9500d69062aec1c77037179b6f0669e4d5d6b72b84722d6a3"
 dependencies = [
  "twox-hash",
 ]
@@ -1854,9 +1854,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "1.2.4"
+version = "1.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
+checksum = "20521a903f02b0a573cd6840e9d0a5a0cc043d361fe924092cd70f8556cc9c4a"
 dependencies = [
  "libc",
  "log",
@@ -2757,9 +2757,9 @@ checksum = "eec689c0bc40ff2458a5977b6619cb718087084a18e02a131c599b62d05e1a5f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.16"
+version = "0.103.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
+checksum = "e3a0760a887c14823fca5a1c970b01d47c328c696c0c64829d1df50e8f853fd5"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -3116,9 +3116,9 @@ dependencies = [
 
 [[package]]
 name = "target-lexicon"
-version = "0.13.5"
+version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+checksum = "8c447be3a2abfa84b2d91680c56600bd6b2873866de27b36ec911be705e291da"
 
 [[package]]
 name = "termina"
