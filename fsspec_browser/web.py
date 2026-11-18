@@ -23,7 +23,9 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from urllib.parse import parse_qs, unquote, urlparse
 
 import fsspec
-from fsspec_data import DEFAULT_REGISTRY, DataFormat, SchemaFormat, SchemaRef, resolve_schema
+from fsspec_data import DEFAULT_REGISTRY, DataFormat, DataSource, Facet, SchemaFormat, SchemaRef, resolve_schema
+
+from .sources import as_source, is_kafka_partition, metadata_json, node_preview, page_rows, previewable, table_rows
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -153,10 +155,8 @@ def _is_directory(entry: dict[str, Any]) -> bool:
     return kind in {"directory", "dir"} or bool(entry.get("isdir"))
 
 
-def _is_kafka_partition(fs: Any, entry: dict[str, Any]) -> bool:
-    protocol = getattr(fs, "protocol", ())
-    protocols = (protocol,) if isinstance(protocol, str) else protocol
-    return "kafka" in protocols and _is_directory(entry) and "partition" in entry
+def _node_path(path: str) -> str:
+    return path.rstrip("/") or path
 
 
 def _format_metadata_value(key: str, value: Any) -> str | None:
@@ -185,7 +185,7 @@ def _metadata(entry: dict[str, Any]) -> dict[str, str]:
     return metadata
 
 
-def _normalize_entry(fs: Any, entry: dict[str, Any] | str) -> dict[str, Any]:
+def _normalize_entry(fs: Any, entry: dict[str, Any] | str, facets: frozenset[Facet] | None = None) -> dict[str, Any]:
     if isinstance(entry, str):
         entry = {"name": entry}
     path = str(entry.get("name") or entry.get("path") or "")
@@ -197,7 +197,8 @@ def _normalize_entry(fs: Any, entry: dict[str, Any] | str) -> dict[str, Any]:
         "type": item_type,
         "size": entry.get("size"),
         "metadata": _metadata(entry),
-        "previewable": item_type == "file" or entry.get("kind") in {"table", "view"} or _is_kafka_partition(fs, entry),
+        "facets": sorted(facet.value for facet in facets) if facets is not None else [],
+        "previewable": previewable(item_type == "directory", facets),
     }
 
 
@@ -206,7 +207,14 @@ def list_entries(state: BrowserState, path: str | None = None, *, offset: int = 
     raw_entries = state.fs.ls(list_path, detail=True)
     if isinstance(raw_entries, dict):
         raw_entries = list(raw_entries.values())
-    normalized = [_normalize_entry(state.fs, entry) for entry in raw_entries]
+    source = as_source(state.fs)
+    facets: dict[str, frozenset[Facet]] = {}
+    if source is not None:
+        facets = {_node_path(node.path): node.facets for node in source.children(list_path)}
+    normalized = [
+        _normalize_entry(state.fs, entry, facets.get(_node_path(str(entry.get("name") or entry.get("path") or ""))) if source else None)
+        for entry in raw_entries
+    ]
     entries = list({(entry["path"], entry["type"]): entry for entry in normalized}.values())
     entries.sort(key=lambda item: (item["type"] != "directory", item["name"].casefold()))
     offset = max(offset, 0)
@@ -335,8 +343,6 @@ def _preview_decoded(
     schema: pa.Schema | None = None,
 ) -> PreviewPage:
     wanted = state.preview_rows + 1
-    rows: list[dict[str, Any]] = []
-    skipped = 0
     with state.fs.open(path, "rb") as file:
         batches = DEFAULT_REGISTRY.get(format).iter_batches(
             file,
@@ -345,17 +351,22 @@ def _preview_decoded(
             row_limit=offset + wanted,
             byte_limit=state.preview_bytes,
         )
-        for batch in batches:
-            batch_rows = batch.to_pylist()
-            if skipped + len(batch_rows) <= offset:
-                skipped += len(batch_rows)
-                continue
-            start = max(offset - skipped, 0)
-            rows.extend(batch_rows[start : start + wanted - len(rows)])
-            skipped += len(batch_rows)
-            if len(rows) >= wanted:
-                break
+        rows = page_rows(batches, offset, wanted)
     return _table_payload(state, path, info, rows, offset)
+
+
+def _preview_node(state: BrowserState, source: DataSource, path: str, info: dict[str, Any], offset: int, token: str | None) -> PreviewPage | None:
+    """Previews a data source node by its facets, or returns ``None`` for a file previewed by
+    its type."""
+    kind = node_preview(source, path, info)
+    if kind == "table":
+        if is_kafka_partition(state.fs, info):
+            return _preview_kafka_partition(state, path, info, token)
+        rows = table_rows(source, path, offset, state.preview_rows + 1, state.preview_bytes)
+        return _table_payload(state, path, info, rows, offset)
+    if kind == "metadata":
+        return _preview_payload(state, path, info, kind="json", content=metadata_json(source, path))
+    return None
 
 
 def preview_file(
@@ -367,19 +378,16 @@ def preview_file(
     token: str | None = None,
 ) -> PreviewPage:
     info = state.fs.info(path)
-    if _is_directory(info):
-        if info.get("kind") in {"table", "view"}:
-            return _preview_relation(state, path, info, offset)
-        if _is_kafka_partition(state.fs, info):
-            return _preview_kafka_partition(state, path, info, token)
+    source = as_source(state.fs)
+    if source is not None:
+        page = _preview_node(state, source, path, info, offset, token)
+        if page is not None:
+            return page
+    elif _is_directory(info):
         raise IsADirectoryError(path)
 
     display_path = _display_path(state.fs, path)
     lower_path = display_path.lower()
-    if info.get("kind") == "column":
-        data = state.fs.cat_file(f"{path}?limit={state.preview_rows + 1}&offset={offset}")
-        values = json.loads(data)
-        return _table_payload(state, path, info, [{"value": value} for value in values], offset)
     if lower_path.endswith(".csv"):
         return _preview_text_table(state, path, info, offset, DataFormat.CSV)
     if lower_path.endswith((".jsonl", ".ndjson")):
@@ -467,17 +475,9 @@ def preview_query(state: BrowserState, sql: str) -> PreviewPage:
     )
 
 
-def _preview_relation(state: BrowserState, path: str, info: dict[str, Any], offset: int = 0) -> PreviewPage:
-    clean_path = path.rstrip("/")
-    data = state.fs.cat_file(f"{clean_path}.jsonl?limit={state.preview_rows + 1}&offset={offset}")
-    rows = [json.loads(line) for line in data.decode("utf-8").splitlines() if line]
-    result = _table_payload(state, path, info, rows, offset)
-    result["metadata"]["relation"] = str(info["kind"])
-    return result
-
-
 def _preview_kafka_partition(state: BrowserState, path: str, info: dict[str, Any], token: str | None) -> PreviewPage:
-    # Compaction leaves gaps in offsets, so pages continue from the next message's offset.
+    # Compaction leaves gaps in offsets, so pages continue from the next message's offset
+    # rather than a row count, which a data source's scan cannot resume from yet.
     start = int(token) if token is not None else int(info["low"])
     data = state.fs.cat_file(f"{path.rstrip('/')}.jsonl?start={start}&limit={state.preview_rows + 1}")
     rows = [json.loads(line) for line in data.decode("utf-8").splitlines() if line]

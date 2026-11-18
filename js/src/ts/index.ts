@@ -2,6 +2,7 @@ import { FileTree } from "@pierre/trees";
 
 type ApiEntry = {
   display_path: string;
+  facets: string[];
   metadata: Record<string, string>;
   name: string;
   path: string;
@@ -384,6 +385,9 @@ const detailLines = (item: BrowserItem) => {
     `path: ${item.display_path}`,
     `type: ${item.type}`,
   ];
+  if (item.facets?.length) {
+    lines.push(`offers: ${item.facets.join(", ")}`);
+  }
   if (item.type === "file") {
     lines.push(`size: ${formatSize(item.size) || "unknown"}`);
   } else {
@@ -920,6 +924,7 @@ const startSession = async (config: ApiConfig) => {
   }
   rootItem = {
     display_path: config.display_root,
+    facets: [],
     metadata: {},
     name: config.display_root,
     path: config.root_path,
