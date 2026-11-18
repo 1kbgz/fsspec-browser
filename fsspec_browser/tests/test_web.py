@@ -393,8 +393,8 @@ def test_preview_embedded_schema_formats_use_fsspec_data(tmp_path, monkeypatch, 
     assert next_preview["continuation"] is None
     assert len(calls) == 2
     assert hasattr(calls[0][0], "read")
-    assert calls[0][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 3, "schema": None}
-    assert calls[1][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 5, "schema": None}
+    assert calls[0][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 3, "row_offset": 0, "schema": None}
+    assert calls[1][1] == {"batch_size": 3, "byte_limit": 1024 * 1024, "row_limit": 3, "row_offset": 2, "schema": None}
 
 
 def test_text_table_previews_use_matching_schemas(tmp_path):

@@ -7,7 +7,6 @@ otherwise. Other filesystems are previewed by file type."""
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
 from typing import Any
 
 from fsspec_data import DataSource, Facet
@@ -39,27 +38,11 @@ def is_kafka_partition(fs: Any, info: dict[str, Any]) -> bool:
     return any(name.startswith("kafka") for name in protocols) and is_directory(info) and info.get("kind") == "partition"
 
 
-def page_rows(batches: Iterable[Any], offset: int, wanted: int) -> list[dict[str, Any]]:
-    """Up to ``wanted`` rows after skipping ``offset`` rows of ``batches``."""
-    rows: list[dict[str, Any]] = []
-    skipped = 0
-    for batch in batches:
-        batch_rows = batch.to_pylist()
-        if skipped + len(batch_rows) <= offset:
-            skipped += len(batch_rows)
-            continue
-        start = max(offset - skipped, 0)
-        rows.extend(batch_rows[start : start + wanted - len(rows)])
-        skipped += len(batch_rows)
-        if len(rows) >= wanted:
-            break
-    return rows
-
-
 def table_rows(source: DataSource, path: str, offset: int, wanted: int, byte_limit: int | None) -> list[dict[str, Any]]:
-    """Up to ``wanted`` rows of a table after ``offset`` rows."""
-    batches = source.scan(path, batch_size=wanted, row_limit=offset + wanted, byte_limit=byte_limit)
-    return page_rows(batches, offset, wanted)
+    """Up to ``wanted`` rows of a table after ``offset`` rows. Sources that push row offsets
+    down, such as databases and Parquet files, skip the earlier rows without reading them."""
+    batches = source.scan_selected(path, row_offset=offset, batch_size=wanted, row_limit=wanted, byte_limit=byte_limit)
+    return [row for batch in batches for row in batch.to_pylist()]
 
 
 def node_preview(source: DataSource, path: str, info: dict[str, Any]) -> str | None:
