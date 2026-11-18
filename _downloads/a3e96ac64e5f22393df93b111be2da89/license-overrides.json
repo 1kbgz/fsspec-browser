@@ -59,7 +59,7 @@
     },
     {
       "package_name": "fsspec_data",
-      "package_version": "0.6.0",
+      "package_version": "0.9.0",
       "repository": "https://github.com/1kbgz/fsspec-data",
       "license": "Apache-2.0",
       "licenses": [
@@ -71,7 +71,7 @@
     },
     {
       "package_name": "fsspec_rs",
-      "package_version": "0.2.3",
+      "package_version": "0.3.0",
       "repository": "https://github.com/1kbgz/fsspec-rs",
       "license": "Apache-2.0",
       "licenses": [
@@ -83,7 +83,7 @@
     },
     {
       "package_name": "fsspec_rs_bridge",
-      "package_version": "0.2.3",
+      "package_version": "0.3.0",
       "repository": "https://github.com/1kbgz/fsspec-rs",
       "license": "Apache-2.0",
       "licenses": [
@@ -95,7 +95,7 @@
     },
     {
       "package_name": "fsspec_sys",
-      "package_version": "0.2.3",
+      "package_version": "0.3.0",
       "repository": "https://github.com/1kbgz/fsspec-rs",
       "license": "Apache-2.0",
       "licenses": [
