@@ -34,7 +34,7 @@ classifiers = [
 
 dependencies = [
     "fsspec",
-    "fsspec-data>=0.8.0,<0.9",
+    "fsspec-data>=0.9.0,<0.10",
     "fsspec-rs>=0.2.1,<0.3",
 ]
 
