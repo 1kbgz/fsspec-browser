@@ -1,4 +1,4 @@
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 # The extension links libfsspec from the fsspec_rs package, which puts its lib/ on the DLL path.
 import fsspec_rs
