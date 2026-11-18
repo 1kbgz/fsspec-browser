@@ -1038,14 +1038,15 @@ dependencies = [
 
 [[package]]
 name = "fsspec_data"
-version = "0.6.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "925cddb85892ad2e07ca850d57489551220b2762c3d0bc924f820aae47a1a3d4"
+checksum = "99d1989f15b5b60b009e4da183ca9a9cb73a3d34bb1662b285fb1509cb01c77c"
 dependencies = [
  "arrow",
  "arrow-avro",
  "bytes",
  "fsspec_rs",
+ "futures",
  "parquet",
  "serde",
  "serde_json",
@@ -1054,22 +1055,25 @@ dependencies = [
 
 [[package]]
 name = "fsspec_rs"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5594e3e3dca41de99643b2861efec07d811cd9320f67fe1f068656085517429e"
+checksum = "1255e82fe05d791d8c402fbc4e75a25697ff389076e2166720a24c426d81825c"
 dependencies = [
+ "async-trait",
  "bytes",
+ "futures-util",
  "object_store",
  "percent-encoding",
+ "sha2",
  "tokio",
  "url",
 ]
 
 [[package]]
 name = "fsspec_rs_bridge"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f30f78bd02121295c8793099e5d7d75443212aceea70d267332a0a3756d6c9e"
+checksum = "054b7a5f56ad272aaceb7a2cfcef4460da01e806d2402afa2b7271c7593cbfea"
 dependencies = [
  "fsspec_rs",
  "pyo3",
@@ -1077,11 +1081,25 @@ dependencies = [
 
 [[package]]
 name = "fsspec_sys"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0986a650028850b9ad8dfa41eb3bfdf5360217c4c20213805c4870b9e605287a"
+checksum = "4e9debcbe6f2fc00a037ffccabecdc8b0af9a306c3ad4ac8889768735a00bf8a"
 dependencies = [
  "fsspec_rs",
+]
+
+[[package]]
+name = "futures"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a31d2a3fbaaeb2af2368bbdd904aa8e812d3c04a1ee10d3171f52d556e5d0a3"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
 ]
 
 [[package]]
@@ -1135,6 +1153,7 @@ version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
 dependencies = [
+ "futures-channel",
  "futures-core",
  "futures-io",
  "futures-macro",
@@ -2109,6 +2128,7 @@ dependencies = [
  "bytes",
  "chrono",
  "flate2",
+ "futures",
  "half",
  "hashbrown",
  "lz4_flex",
@@ -2118,6 +2138,7 @@ dependencies = [
  "seq-macro",
  "simdutf8",
  "snap",
+ "tokio",
  "twox-hash",
  "zstd",
 ]

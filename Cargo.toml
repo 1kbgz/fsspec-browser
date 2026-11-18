@@ -11,9 +11,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 fsspec_browser_core = { package = "fsspec_browser", path = "./rust", version = "*", features = ["browser"] }
-fsspec_rs = "0.2.1"
-fsspec_rs_bridge = "0.2.1"
-fsspec_sys = { version = "0.2.1", optional = true }
+fsspec_rs = "0.3.0"
+fsspec_rs_bridge = "0.3.0"
+fsspec_sys = { version = "0.3.0", optional = true }
 pyo3 = { version = "0.30.1", features = ["abi3", "extension-module", "multiple-pymethods"] }
 serde_json = "1"
 
