@@ -169,11 +169,12 @@ ownership of authentication, path rules, metadata, and query behavior.</p>
 <p>Listings and metadata are normally cheap compared with downloading an object or
 materializing a database relation. For that reason, selecting an entry first displays its
 metadata. Remote file previews require an explicit action, and preview paths use byte or row limits appropriate to their format.</p>
-<p>Database relations remain directory-like so users can browse columns, indexes, and
-constraints. The browser recognizes relation metadata and requests a bounded data view
-when previewing, rather than treating the directory as a conventional file. Kafka
-partitions from fsspec-kafka work the same way: previewing a partition directory pages
-through its messages.</p>
+<p>Filesystems that describe their own nodes as fsspec-data data sources, such as fsspec-db,
+fsspec-kafka, and <code class="docutils literal notranslate"><span class="pre">dataview</span></code>, are previewed by what each node offers rather than by file
+name. A database relation or a Kafka partition stays directory-like, so users can browse
+its columns or windows, and previewing it pages through its rows. A node that offers only
+metadata, such as a database column, previews that metadata. Raw files, such as Kafka
+records, preview as bytes. Other filesystems are previewed by file type.</p>
 </section>
 <section id="rendering-belongs-to-the-frontend">
 <h2>Rendering belongs to the frontend<a class="headerlink" href="#rendering-belongs-to-the-frontend" title="Link to this heading">¶</a></h2>
@@ -192,9 +193,11 @@ also infers or resolves the schemas that CSV and JSONL lack.</p>
 rows, while the byte limit bounds generic file reads. These controls serve responsiveness
 and resource use. A row page does not necessarily bound backend reads, and the byte
 option does not cap every decoder or backend cache.</p>
-<p>Database backends can make paging efficient by pushing <code class="docutils literal notranslate"><span class="pre">limit</span></code> and <code class="docutils literal notranslate"><span class="pre">offset</span></code> into a query.
-Kafka partitions continue from an opaque token holding the next message’s offset, because
-compaction leaves gaps that make row counts and offsets differ.
+<p>Data sources page by row offset, and a backend can make that efficient by pushing the
+limit into its read: fsspec-db reads with <code class="docutils literal notranslate"><span class="pre">limit=</span></code>. Kafka partitions continue from an
+opaque token holding the next message’s offset instead, because compaction leaves gaps
+that make row counts and offsets differ and the data-source contract cannot yet resume
+from a position.
 Generic files may still require sequential decoding to reach a later page. The same UI
 gesture therefore has backend-dependent cost even though its result looks consistent.</p>
 </section>

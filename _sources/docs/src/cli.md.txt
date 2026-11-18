@@ -87,8 +87,10 @@ Directories expand on click and reveal more entries while scrolling. **Refresh**
 reloads the selected directory level.
 
 Raw previews request at most `--preview-bytes + 1` bytes to detect truncation.
-Complete `.json` previews are formatted. CSV, JSONL, Arrow IPC, Parquet, database
-relations, and Kafka partitions can render as tables. CSV, JSONL, Arrow IPC, and Parquet
+Complete `.json` previews are formatted. CSV, JSONL, Arrow IPC, Parquet, and the tables
+of fsspec-data data sources, such as database relations and Kafka topics and partitions,
+can render as tables. A data-source node with only metadata, such as a database column,
+previews its metadata as JSON, and listings show what each entry offers. CSV, JSONL, Arrow IPC, and Parquet
 decode through `fsspec-data` with row and decoded Arrow-memory bounds. The byte option is not a universal cap on backend traffic or
 on all structured decoders' allocations.
 
