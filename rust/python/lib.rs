@@ -6,23 +6,41 @@ use fsspec_browser_core::{
     BackendResult, BrowserBackend, ListPage, PreviewContinuation, PreviewPage, SessionDetails,
 };
 use fsspec_rs::{FileSystem, FileType, FsError, FsResult};
-use fsspec_rs_bridge::{url_to_fs, PyFsspecFs};
+use fsspec_rs_bridge::PyFsspecFs;
 use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyTuple};
 
 struct PythonBackend {
     fs: PyFsspecFs,
+    /// The Python filesystem, for the fsspec-data data-source calls in
+    /// `fsspec_browser.sources`.
+    py_fs: Py<PyAny>,
     name: String,
     root_marker: String,
     url: String,
-    database: bool,
-    kafka: bool,
 }
+
+/// Data-source previews come back as pages of at most this many rows.
+const PREVIEW_ROWS: usize = 100;
 
 impl PythonBackend {
     fn new(session: &SessionDetails, protocol: &str) -> FsResult<(Self, String)> {
-        let (fs, start) = url_to_fs(&session.url, &session.storage_options)?;
+        let (py_fs, start) = Python::attach(|py| {
+            let kwargs = PyDict::new(py);
+            for (key, value) in &session.storage_options {
+                kwargs.set_item(key, value)?;
+            }
+            let (fs, start): (Py<PyAny>, String) = py
+                .import("fsspec.core")?
+                .call_method("url_to_fs", (&session.url,), Some(&kwargs))?
+                .extract()?;
+            PyResult::Ok((fs, start))
+        })
+        .map_err(python_error)?;
+        let fs = Python::attach(|py| PyFsspecFs::from_py_fs(py_fs.clone_ref(py)))?;
         let root_marker = fs.root_marker().to_string();
-        let start = if protocol.starts_with("db+") {
+        // A database URL names the database, not a path inside it.
+        let start = if start.is_empty() || protocol.starts_with("db+") {
             root_marker.clone()
         } else {
             start
@@ -30,14 +48,31 @@ impl PythonBackend {
         Ok((
             Self {
                 fs,
+                py_fs,
                 name: format!("{protocol}-py"),
                 root_marker,
                 url: session.url.clone(),
-                database: protocol.starts_with("db+"),
-                kafka: protocol == "kafka",
             },
             start,
         ))
+    }
+
+    /// Calls a function of `fsspec_browser.sources` with the Python filesystem first.
+    fn sources<T>(
+        &self,
+        function: &str,
+        args: impl for<'py> FnOnce(Python<'py>) -> PyResult<Bound<'py, PyTuple>>,
+        extract: impl for<'py> FnOnce(Bound<'py, PyAny>) -> PyResult<T>,
+    ) -> FsResult<T> {
+        Python::attach(|py| {
+            let mut call_args = vec![self.py_fs.bind(py).clone()];
+            call_args.extend(args(py)?.iter());
+            let result = py
+                .import("fsspec_browser.sources")?
+                .call_method1(function, PyTuple::new(py, call_args)?)?;
+            extract(result)
+        })
+        .map_err(python_error)
     }
 }
 
@@ -67,15 +102,17 @@ impl BrowserBackend for PythonBackend {
         parent_path(path, &self.root_marker)
     }
 
+    /// Data sources preview tables, raw files, and metadata by their facets; other
+    /// filesystems preview files.
     fn can_preview(&self, info: &fsspec_rs::FileInfo) -> bool {
-        info.is_file()
-            || (self.database
-                && info.is_dir()
-                && matches!(
-                    info.extra.get("kind").map(String::as_str),
-                    Some("table" | "view")
-                ))
-            || (self.kafka && is_kafka_partition(info))
+        let name = info.name.clone();
+        let directory = info.is_dir();
+        self.sources(
+            "terminal_previewable",
+            |py| (name, directory).into_pyobject(py),
+            |result| result.extract(),
+        )
+        .unwrap_or_else(|_| info.is_file())
     }
 
     fn preview(
@@ -84,11 +121,9 @@ impl BrowserBackend for PythonBackend {
         continuation: Option<&PreviewContinuation>,
         limit: usize,
     ) -> FsResult<PreviewPage> {
-        if self.kafka {
-            let info = self.fs.info(path)?;
-            if is_kafka_partition(&info) {
-                return self.kafka_page(path, &info, continuation);
-            }
+        let info = self.fs.info(path)?;
+        if is_kafka_partition(&self.fs, &info) {
+            return self.kafka_page(path, &info, continuation);
         }
         let offset = match continuation {
             None => 0,
@@ -99,18 +134,19 @@ impl BrowserBackend for PythonBackend {
                 ));
             }
         };
-        let info = self.fs.info(path)?;
-        let kind = info.extra.get("kind").map(String::as_str);
-        if self.database && matches!(kind, Some("table" | "view")) {
-            let data_path = format!(
-                "{}.jsonl?limit=101&offset={offset}",
-                path.trim_end_matches('/')
-            );
-            return jsonl_page(self.fs.cat_file(&data_path, None, None)?, offset);
-        }
-        if self.database && kind == Some("column") {
-            let data_path = format!("{path}?limit=101&offset={offset}");
-            return json_array_page(self.fs.cat_file(&data_path, None, None)?, offset);
+        let owned = path.to_string();
+        let page: Option<(Vec<u8>, bool)> = self.sources(
+            "terminal_page",
+            |py| (owned, offset, PREVIEW_ROWS, limit).into_pyobject(py),
+            |result| result.extract(),
+        )?;
+        if let Some((bytes, has_more)) = page {
+            let rows = serde_json::from_slice::<Vec<serde_json::Value>>(&bytes)
+                .map_or(0, |rows| rows.len());
+            return Ok(PreviewPage {
+                bytes,
+                continuation: has_more.then_some(PreviewContinuation::Offset(offset + rows)),
+            });
         }
         let bytes = self
             .fs
@@ -181,35 +217,16 @@ impl PythonBackend {
     }
 }
 
-fn is_kafka_partition(info: &fsspec_rs::FileInfo) -> bool {
-    info.is_dir() && info.extra.contains_key("partition")
+/// A Kafka partition pages by message offset, since compaction leaves gaps that a
+/// data source's row offsets cannot skip cheaply.
+fn is_kafka_partition(fs: &PyFsspecFs, info: &fsspec_rs::FileInfo) -> bool {
+    fs.source_protocol().starts_with("kafka")
+        && info.is_dir()
+        && info.extra.get("kind").map(String::as_str) == Some("partition")
 }
 
-fn jsonl_page(data: Vec<u8>, offset: usize) -> FsResult<PreviewPage> {
-    let text = String::from_utf8(data).map_err(|err| FsError::Other(err.to_string()))?;
-    let mut rows: Vec<&str> = text
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .collect();
-    let has_more = rows.len() > 100;
-    rows.truncate(100);
-    let next_offset = offset + rows.len();
-    Ok(PreviewPage {
-        bytes: format!("[\n{}\n]", rows.join(",\n")).into_bytes(),
-        continuation: has_more.then_some(PreviewContinuation::Offset(next_offset)),
-    })
-}
-
-fn json_array_page(data: Vec<u8>, offset: usize) -> FsResult<PreviewPage> {
-    let mut values: Vec<serde_json::Value> =
-        serde_json::from_slice(&data).map_err(|err| FsError::Other(err.to_string()))?;
-    let has_more = values.len() > 100;
-    values.truncate(100);
-    let next_offset = offset + values.len();
-    Ok(PreviewPage {
-        bytes: serde_json::to_vec(&values).map_err(|err| FsError::Other(err.to_string()))?,
-        continuation: has_more.then_some(PreviewContinuation::Offset(next_offset)),
-    })
+fn python_error(err: PyErr) -> FsError {
+    FsError::Other(err.to_string())
 }
 
 fn build_python_backend(session: &SessionDetails, protocol: &str) -> BackendResult {

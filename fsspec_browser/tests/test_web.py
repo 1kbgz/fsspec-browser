@@ -266,12 +266,20 @@ def test_normalize_entry_includes_metadata():
     }
 
 
-def test_normalize_database_relation_is_previewable():
+def test_data_source_directories_preview_rows_or_metadata():
+    from fsspec_data import Facet
+
     from fsspec_browser import web
 
-    entry = web._normalize_entry(object(), {"name": "/main/orders", "type": "directory", "kind": "view"})
-
+    relation = {"name": "/main/orders", "type": "directory", "kind": "view"}
+    entry = web._normalize_entry(object(), relation, frozenset({Facet.CHILDREN, Facet.TABLE, Facet.METADATA}))
     assert entry["previewable"] is True
+    assert entry["facets"] == ["children", "metadata", "table"]
+    assert web._normalize_entry(object(), relation, frozenset({Facet.CHILDREN}))["previewable"] is False
+    assert web._normalize_entry(object(), relation)["previewable"] is False
+    column = {"name": "/main/orders/columns/id", "type": "file"}
+    assert web._normalize_entry(object(), column, frozenset({Facet.METADATA}))["previewable"] is True
+    assert web._normalize_entry(object(), column, frozenset())["previewable"] is False
 
 
 def test_preview_file_formats_json(tmp_path):
@@ -481,11 +489,16 @@ def test_preview_kafka_partition_pages_by_offset_token(tmp_path):
     # Offsets 3, 5, 6 and 9 remain after compaction.
     messages = {offset: {"partition": 0, "offset": offset, "value": f"v{offset}"} for offset in (3, 5, 6, 9)}
 
-    class FakeKafkaFs:
-        protocol = ("kafka",)
+    from fsspec_data import DataSource, Facet, Node
+
+    class FakeKafkaFs(DataSource):
+        protocol = ("kafka", "kafka+offset")
 
         def info(self, path):
-            return {"name": path, "type": "directory", "size": 0, "partition": "0", "low": "3", "high": "10"}
+            return {"name": path, "type": "directory", "size": 0, "kind": "partition", "partition": "0", "low": "3", "high": "10"}
+
+        def describe(self, path):
+            return Node(path, [Facet.CHILDREN, Facet.TABLE, Facet.METADATA])
 
         def cat_file(self, path):
             name, query = path.split("?")
@@ -499,8 +512,7 @@ def test_preview_kafka_partition_pages_by_offset_token(tmp_path):
             return f"kafka://{path}"
 
     fs = FakeKafkaFs()
-    assert web._normalize_entry(fs, fs.info("orders/0"))["previewable"] is True
-    assert web._normalize_entry(object(), fs.info("orders/0"))["previewable"] is False
+    assert web._normalize_entry(fs, fs.info("orders/0"), fs.describe("orders/0").facets)["previewable"] is True
 
     state = web.BrowserState(fs, "", "kafka://", tmp_path, tmp_path, 1024, 256, 2)
     first = web.preview_file(state, "orders/0/")
@@ -528,13 +540,21 @@ def test_preview_database_relation_and_sql(tmp_path):
         def to_pylist(self):
             return self.rows
 
-    class FakeDatabaseFs:
+    import pyarrow as pa
+    from fsspec_data import DataSource, Facet, Node
+
+    sales = pa.table({"Region": ["East", "West", "South"], "Sales": [2, 3, 4]})
+
+    class FakeDatabaseFs(DataSource):
         def info(self, path):
             return {"name": path, "type": "directory", "kind": "view", "size": None}
 
-        def cat_file(self, path):
-            assert path == "/main/sales_by_region.jsonl?limit=3&offset=0"
-            return b'{"Region":"East","Sales":2}\n{"Region":"West","Sales":3}\n{"Region":"South","Sales":4}\n'
+        def describe(self, path):
+            return Node(path, [Facet.CHILDREN, Facet.TABLE, Facet.METADATA])
+
+        def scan(self, path, *, batch_size=1024, row_limit=None, byte_limit=None):
+            assert (path, row_limit) == ("/main/sales_by_region", 3)
+            return pa.RecordBatchReader.from_batches(sales.schema, sales.to_batches(max_chunksize=batch_size))
 
         def query(self, sql):
             assert sql == ("SELECT * FROM (SELECT Region, Sales FROM sales_by_region) AS __fsspec_browser_preview LIMIT 3")
@@ -566,6 +586,86 @@ def test_preview_database_relation_and_sql(tmp_path):
         assert "SELECT or WITH" in str(exc)
     else:
         raise AssertionError("SQL preview should reject mutating statements")
+
+
+# A data source with a relation, a metadata-only column, a raw file, and a plain folder.
+_CATALOG = {
+    "/": {"name": "/", "type": "directory", "size": 0},
+    "/orders": {"name": "/orders", "type": "directory", "size": 0, "kind": "table"},
+    "/orders/id": {"name": "/orders/id", "type": "file", "size": 0, "kind": "column"},
+    "/notes.txt": {"name": "/notes.txt", "type": "file", "size": 5},
+    "/folder": {"name": "/folder", "type": "directory", "size": 0},
+}
+
+
+def _catalog_fs():
+    import pyarrow as pa
+    from fsspec_data import DataSource, Facet, Node
+
+    facets = {
+        "/": [Facet.CHILDREN],
+        "/orders": [Facet.CHILDREN, Facet.TABLE, Facet.METADATA],
+        "/orders/id": [Facet.METADATA],
+        "/notes.txt": [Facet.RAW],
+        "/folder": [Facet.CHILDREN],
+    }
+    rows = pa.table({"id": list(range(5))})
+
+    class CatalogFs(DataSource):
+        def info(self, path):
+            return dict(_CATALOG[path.rstrip("/") or "/"])
+
+        def ls(self, path, detail=True):
+            prefix = path.rstrip("/") + "/"
+            return [dict(entry) for name, entry in _CATALOG.items() if name.startswith(prefix) and "/" not in name[len(prefix) :] and name != "/"]
+
+        def describe(self, path):
+            return Node(path, facets[path.rstrip("/") or "/"])
+
+        def children(self, path):
+            return [self.describe(entry["name"]) for entry in self.ls(path)]
+
+        def scan(self, path, *, batch_size=1024, row_limit=None, byte_limit=None):
+            return pa.RecordBatchReader.from_batches(rows.schema, rows.to_batches(max_chunksize=2))
+
+        def metadata(self, path):
+            return {"kind": "column", "arrow_type": "int64", "primary_key": True}
+
+        def open(self, path, mode="rb"):
+            import io
+
+            return io.BytesIO(b"hello")
+
+        def unstrip_protocol(self, path):
+            return f"catalog://{path}"
+
+    return CatalogFs()
+
+
+def test_data_sources_list_and_preview_by_facet(tmp_path):
+    from fsspec_browser import web
+
+    state = web.BrowserState(_catalog_fs(), "/", "catalog://", tmp_path, tmp_path, 1024, 256, 2)
+
+    listing = {entry["name"]: entry for entry in web.list_entries(state)["entries"]}
+    assert {name: (entry["facets"], entry["previewable"]) for name, entry in listing.items()} == {
+        "folder": (["children"], False),
+        "orders": (["children", "metadata", "table"], True),
+        "notes.txt": (["raw"], True),
+    }
+
+    first = web.preview_file(state, "/orders")
+    second = web.preview_file(state, "/orders", offset=2)
+    assert (first["rows"], first["continuation"]) == ([{"id": 0}, {"id": 1}], {"kind": "offset", "value": 2})
+    assert second["rows"] == [{"id": 2}, {"id": 3}]
+
+    column = web.preview_file(state, "/orders/id")
+    assert column["kind"] == "json"
+    assert json.loads(column["content"]) == {"arrow_type": "int64", "kind": "column", "primary_key": True}
+
+    assert web.preview_file(state, "/notes.txt")["content"] == "hello"
+    with pytest.raises(IsADirectoryError):
+        web.preview_file(state, "/folder")
 
 
 def test_download_target_strips_protocol(tmp_path):

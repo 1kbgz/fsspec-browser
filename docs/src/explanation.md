@@ -21,11 +21,12 @@ Listings and metadata are normally cheap compared with downloading an object or
 materializing a database relation. For that reason, selecting an entry first displays its
 metadata. Remote file previews require an explicit action, and preview paths use byte or row limits appropriate to their format.
 
-Database relations remain directory-like so users can browse columns, indexes, and
-constraints. The browser recognizes relation metadata and requests a bounded data view
-when previewing, rather than treating the directory as a conventional file. Kafka
-partitions from fsspec-kafka work the same way: previewing a partition directory pages
-through its messages.
+Filesystems that describe their own nodes as fsspec-data data sources, such as fsspec-db,
+fsspec-kafka, and `dataview`, are previewed by what each node offers rather than by file
+name. A database relation or a Kafka partition stays directory-like, so users can browse
+its columns or windows, and previewing it pages through its rows. A node that offers only
+metadata, such as a database column, previews that metadata. Raw files, such as Kafka
+records, preview as bytes. Other filesystems are previewed by file type.
 
 ## Rendering belongs to the frontend
 
@@ -46,9 +47,11 @@ rows, while the byte limit bounds generic file reads. These controls serve respo
 and resource use. A row page does not necessarily bound backend reads, and the byte
 option does not cap every decoder or backend cache.
 
-Database backends can make paging efficient by pushing `limit` and `offset` into a query.
-Kafka partitions continue from an opaque token holding the next message's offset, because
-compaction leaves gaps that make row counts and offsets differ.
+Data sources page by row offset, and a backend can make that efficient by pushing the
+limit into its read: fsspec-db reads with `limit=`. Kafka partitions continue from an
+opaque token holding the next message's offset instead, because compaction leaves gaps
+that make row counts and offsets differ and the data-source contract cannot yet resume
+from a position.
 Generic files may still require sequential decoding to reach a later page. The same UI
 gesture therefore has backend-dependent cost even though its result looks consistent.
 
