@@ -25,6 +25,21 @@ def test_terminal_pages_tables_metadata_and_files():
         sources.terminal_page(fs, "/folder", 0, 2, None)
 
 
+def test_table_pages_pass_row_offsets_to_the_source():
+    fs = _catalog_fs()
+    calls = []
+    scan_selected = fs.scan_selected
+
+    def recording(path, **options):
+        calls.append(options)
+        return scan_selected(path, **options)
+
+    fs.scan_selected = recording
+
+    assert sources.table_rows(fs, "/orders", 3, 2, None) == [{"id": 3}, {"id": 4}]
+    assert calls == [{"row_offset": 3, "batch_size": 2, "row_limit": 2, "byte_limit": None}]
+
+
 def test_terminal_previews_follow_facets_or_file_types(tmp_path):
     fs = _catalog_fs()
     assert sources.terminal_previewable(fs, "/orders", True) is True

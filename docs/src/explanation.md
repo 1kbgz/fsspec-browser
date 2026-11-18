@@ -47,8 +47,9 @@ rows, while the byte limit bounds generic file reads. These controls serve respo
 and resource use. A row page does not necessarily bound backend reads, and the byte
 option does not cap every decoder or backend cache.
 
-Data sources page by row offset, and a backend can make that efficient by pushing the
-limit into its read: fsspec-db reads with `limit=`. Kafka partitions continue from an
+Data sources page by row offset through `scan_selected`, and a backend can make that
+efficient by skipping the earlier rows in its read: fsspec-db reads with `offset=` and
+`limit=`, and Parquet files skip whole row groups. Kafka partitions continue from an
 opaque token holding the next message's offset instead, because compaction leaves gaps
 that make row counts and offsets differ and the data-source contract cannot yet resume
 from a position.

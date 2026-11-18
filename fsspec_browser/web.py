@@ -25,7 +25,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import fsspec
 from fsspec_data import DEFAULT_REGISTRY, DataFormat, DataSource, Facet, SchemaFormat, SchemaRef, resolve_schema
 
-from .sources import as_source, is_kafka_partition, metadata_json, node_preview, page_rows, previewable, table_rows
+from .sources import as_source, is_kafka_partition, metadata_json, node_preview, previewable, table_rows
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -347,11 +347,12 @@ def _preview_decoded(
         batches = DEFAULT_REGISTRY.get(format).iter_batches(
             file,
             schema=schema,
+            row_offset=offset,
             batch_size=wanted,
-            row_limit=offset + wanted,
+            row_limit=wanted,
             byte_limit=state.preview_bytes,
         )
-        rows = page_rows(batches, offset, wanted)
+        rows = [row for batch in batches for row in batch.to_pylist()]
     return _table_payload(state, path, info, rows, offset)
 
 
